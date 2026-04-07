@@ -3,7 +3,6 @@ import json
 import datetime
 import os
 
-# Pega o token do HubSpot via variável de ambiente (configurada no Render)
 ACCESS_TOKEN_HUBSPOT = os.environ.get("ACCESS_TOKEN_HUBSPOT")
 
 HEADERS = {
@@ -11,11 +10,21 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
+PIPELINE_SUPORTE_ID = "0"  # ID da sua pipeline de suporte
+
+def buscar_ticket(ticket_id):
+    """Busca os dados do ticket no HubSpot incluindo a pipeline."""
+    url = f"https://api.hubapi.com/crm/v3/objects/tickets/{ticket_id}?properties=hs_pipeline,subject"
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=15)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Erro ao buscar ticket {ticket_id}: {e}")
+        return None
+
 def adicionar_observacao(ticket_id, observacao_html, titulo_nota):
-    """
-    Adiciona uma nota (observação) associada a um ticket no HubSpot.
-    Reaproveitado diretamente do seu script original.
-    """
+    """Adiciona uma nota associada a um ticket no HubSpot."""
     if not ACCESS_TOKEN_HUBSPOT:
         print("❌ Token HubSpot ausente.")
         return False
@@ -64,11 +73,22 @@ def adicionar_observacao(ticket_id, observacao_html, titulo_nota):
 
 
 def processar_ticket(ticket_id):
-    """
-    Função principal chamada pelo webhook.
-    Recebe o ID do ticket recém-criado e adiciona a observação de teste.
-    """
-    print(f"[processando] Iniciando enriquecimento do ticket {ticket_id}...")
+    """Busca o ticket, verifica a pipeline e adiciona a observação."""
+    print(f"[processando] Buscando ticket {ticket_id}...")
+
+    ticket = buscar_ticket(ticket_id)
+    if not ticket:
+        return
+
+    pipeline_id = ticket.get("properties", {}).get("hs_pipeline", "")
+    print(f"[info] Ticket {ticket_id} pertence à pipeline: {pipeline_id}")
+
+    # Só processa se for da pipeline de suporte
+    if str(pipeline_id) != PIPELINE_SUPORTE_ID:
+        print(f"[ignorado] Ticket {ticket_id} não é da pipeline de suporte (pipeline: {pipeline_id}). Ignorando.")
+        return
+
+    print(f"[ok] Ticket {ticket_id} é da pipeline de suporte. Adicionando observação...")
 
     conteudo_nota = "<p>teste render - Felipe Tamburus</p>"
 
