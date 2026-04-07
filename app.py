@@ -6,6 +6,8 @@ import time
 import redis
 from enriquecimento import processar_ticket
 
+os.environ["PYTHONUNBUFFERED"] = "1"
+
 r = redis.from_url(os.environ.get("REDIS_URL"))
 FILA_KEY = "fila_tickets"
 
