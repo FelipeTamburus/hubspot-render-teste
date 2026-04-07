@@ -15,7 +15,7 @@ def worker():
     print("[worker] Iniciado, aguardando tickets na fila...")
     while True:
         try:
-            resultado = r.brpop(FILA_KEY, timeout=5)
+            resultado = r.brpop(FILA_KEY, timeout=20)
             if resultado:
                 _, ticket_id = resultado
                 ticket_id = ticket_id.decode("utf-8")
