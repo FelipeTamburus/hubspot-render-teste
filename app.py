@@ -241,6 +241,32 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b'{"status": "filas limpas"}')
             print("[admin] Filas limpas via endpoint /limpar-filas.")
+        elif self.path == "/status-filas":
+            obs1 = r.llen("fila_obs1")
+            obs2 = r.llen("fila_obs2")
+            chat = r.llen("fila_chat")
+            tickets_chat = []
+            for item in r.lrange("fila_chat", 0, -1):
+                try:
+                    dados = json.loads(item.decode("utf-8"))
+                    ticket_id = dados.get("ticket_id", "")
+                    timestamp = dados.get("timestamp", 0)
+                    horas = round((time.time() - timestamp) / 3600, 1)
+                    tickets_chat.append({"ticket_id": ticket_id, "horas_na_fila": horas})
+                except Exception:
+                    pass
+            status = {
+                "fila_obs1": obs1,
+                "fila_obs2": obs2,
+                "fila_chat": chat,
+                "tickets_chat": tickets_chat
+            }
+            resposta = json.dumps(status, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(resposta)
+            print(f"[admin] Status das filas consultado: obs1={obs1}, obs2={obs2}, chat={chat}")
         else:
             self.send_response(404)
             self.end_headers()
