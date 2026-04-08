@@ -24,7 +24,7 @@ def buscar_ticket(ticket_id, properties=None):
     props = properties or [
         "subject", "content", "hs_pipeline", "hs_pipeline_stage",
         "hubspot_owner_id", "hs_object_source", "createdate",
-        "analisado_pela_ia", "associatedcompanyid",
+        "analisado_pela_ia", "associatedcompanyid", "id_empresa_ej",
         "demanda_apresentada_pelo_cliente", "tipo_de_servico",
         "hs_ticket_priority"
     ]
@@ -278,15 +278,22 @@ def adicionar_observacao(ticket_id, titulo, conteudo_html):
 # --- EMPRESA ---
 
 def buscar_company_id(ticket_id):
-    """Busca o ID da empresa associada ao ticket."""
-    url = f"{BASE_URL}/crm/v4/objects/tickets/{ticket_id}/associations/company"
+    """
+    Busca o ID da empresa pelo campo customizado id_empresa_ej do ticket.
+    Esse campo contém o ID da empresa do cliente solicitante no HubSpot.
+    """
+    url = f"{BASE_URL}/crm/v3/objects/tickets/{ticket_id}?properties=id_empresa_ej"
     try:
         response = requests.get(url, headers=HEADERS, timeout=15)
         if response.status_code == 404:
             return None
         response.raise_for_status()
-        resultados = response.json().get("results", [])
-        return str(resultados[0]["toObjectId"]) if resultados else None
+        company_id = response.json().get("properties", {}).get("id_empresa_ej")
+        if company_id and str(company_id).strip():
+            print(f"[hubspot] Empresa identificada via id_empresa_ej: {company_id}")
+            return str(company_id).strip()
+        print(f"[hubspot] Campo id_empresa_ej vazio para ticket {ticket_id}.")
+        return None
     except requests.exceptions.RequestException as e:
         print(f"[hubspot] Erro ao buscar empresa do ticket {ticket_id}: {e}")
         return None
