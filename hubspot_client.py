@@ -300,3 +300,25 @@ def buscar_company_id(ticket_id):
     except requests.exceptions.RequestException as e:
         print(f"[hubspot] Erro ao buscar empresa do ticket {ticket_id}: {e}")
         return None
+
+
+def buscar_plano_empresa(company_id):
+    """
+    Busca o plano contratado da empresa pelo campo plano_contratado_ej.
+    Retorna o nome interno do plano ou None se não encontrado.
+    """
+    url = f"{BASE_URL}/crm/v3/objects/companies/{company_id}?properties=plano_contratado_ej"
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=15)
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        plano = response.json().get("properties", {}).get("plano_contratado_ej")
+        if plano and str(plano).strip():
+            print(f"[hubspot] Plano da empresa {company_id}: {plano}")
+            return str(plano).strip()
+        print(f"[hubspot] Campo plano_contratado_ej vazio para empresa {company_id}.")
+        return None
+    except requests.exceptions.RequestException as e:
+        print(f"[hubspot] Erro ao buscar plano da empresa {company_id}: {e}")
+        return None
