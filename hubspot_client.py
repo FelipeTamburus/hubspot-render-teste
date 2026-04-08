@@ -40,22 +40,19 @@ def buscar_ticket(ticket_id, properties=None):
 
 def buscar_tickets_empresa(company_id, stage=STAGE_RESOLVIDO, dias=30, limit=50):
     """Busca tickets resolvidos de uma empresa nos últimos N dias."""
-    data_limite = (datetime.datetime.now(timezone.utc) - datetime.timedelta(days=dias))
-    data_limite_ms = str(int(data_limite.timestamp() * 1000))
 
     url = f"{BASE_URL}/crm/v3/objects/tickets/search"
     payload = {
         "filterGroups": [{
             "filters": [
-                {"propertyName": "associations.company", "operator": "EQ", "value": str(company_id)},
+                {"propertyName": "id_empresa_ej", "operator": "EQ", "value": str(company_id)},
                 {"propertyName": "hs_pipeline", "operator": "EQ", "value": PIPELINE_SUPORTE},
                 {"propertyName": "hs_pipeline_stage", "operator": "EQ", "value": stage},
-                {"propertyName": "createdate", "operator": "GTE", "value": data_limite_ms}
             ]
         }],
         "properties": [
             "subject", "demanda_apresentada_pelo_cliente",
-            "tipo_de_servico", "hs_ticket_priority", "createdate"
+            "tipo_de_servico", "hs_ticket_priority", "createdate", "id_empresa_ej"
         ],
         "sorts": [{"propertyName": "createdate", "direction": "DESCENDING"}],
         "limit": limit
@@ -99,16 +96,13 @@ def buscar_tickets_resolvidos_globais(tipo_de_servico=None, limit=50):
 
 def buscar_todos_tickets_empresa_30_dias(company_id):
     """Busca todos os tickets (qualquer status) de uma empresa nos últimos 30 dias."""
-    data_limite = datetime.datetime.now(timezone.utc) - datetime.timedelta(days=30)
-    data_limite_ms = str(int(data_limite.timestamp() * 1000))
 
     url = f"{BASE_URL}/crm/v3/objects/tickets/search"
     payload = {
         "filterGroups": [{
             "filters": [
-                {"propertyName": "associations.company", "operator": "EQ", "value": str(company_id)},
+                {"propertyName": "id_empresa_ej", "operator": "EQ", "value": str(company_id)},
                 {"propertyName": "hs_pipeline", "operator": "EQ", "value": PIPELINE_SUPORTE},
-                {"propertyName": "createdate", "operator": "GTE", "value": data_limite_ms}
             ]
         }],
         "properties": ["subject", "hs_ticket_priority", "createdate", "tipo_de_servico"],
