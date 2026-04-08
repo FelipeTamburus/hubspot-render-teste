@@ -1,8 +1,7 @@
 import os
 import time
 import json
-from google import genai
-from google.genai import types
+from contexto_ai_client import chamar_contexto_ai
 from hubspot_client import (
     buscar_ticket,
     buscar_company_id,
@@ -17,73 +16,35 @@ from hubspot_client import (
 
 TIMEOUT_CHAT_SEGUNDOS = 7200
 INTERVALO_VERIFICACAO = 30
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
 
-# --- GEMINI ---
-
-def configurar_gemini():
-    keys_str = os.environ.get("GEMINI_API_KEYS", "")
-    keys = [k.strip() for k in keys_str.split(",") if k.strip()]
-    if not keys:
-        print("[obs2] ERRO: Nenhuma chave Gemini encontrada.")
-        return None
-    return genai.Client(api_key=keys[0])
-
-
-def analisar_com_gemini(client, conteudo_bruto, canal):
-    """
-    Usa o Gemini para analisar o conteúdo do ticket e gerar
-    uma análise rica com dor do cliente e contexto completo.
-    """
+def analisar_com_contexto_ai(conteudo_bruto, canal):
+    """Usa o Contexto.AI para analisar a dor e contexto do ticket."""
     if not conteudo_bruto or not conteudo_bruto.strip():
         return None
 
-    prompt = f"""
-Você é um analista sênior de suporte especialista em entender profundamente a dor e o contexto de clientes.
+    prompt = f"""Você é um analista sênior de suporte da EasyJur. Analise o conteúdo abaixo de um atendimento recebido via {canal} e retorne APENAS um JSON válido com os campos "dor" e "contexto". Não inclua explicações fora do JSON.
 
-Canal de entrada: {canal}
+Conteúdo do atendimento:
+{conteudo_bruto}
 
-Conteúdo bruto do atendimento:
-\"\"\"{conteudo_bruto}\"\"\"
+Instruções:
+- "dor": Descreva em 2 a 4 frases, na terceira pessoa, o que o cliente está enfrentando. Inclua detalhes específicos (módulo, funcionalidade, erro, impacto). Ignore e-mails e nomes de empresa.
+- "contexto": Descreva em 2 a 3 frases o contexto geral: módulo envolvido, urgência percebida, padrão do problema (bug, dúvida, solicitação) e qualquer detalhe que ajude o analista a agir rapidamente.
 
-Analise o conteúdo acima com profundidade e gere:
+Formato obrigatório:
+{{"dor": "Texto aqui.", "contexto": "Texto aqui."}}"""
 
-1. "dor": Descreva de forma clara, completa e enriquecida o que o cliente está enfrentando ou precisando. 
-   - Escreva na terceira pessoa (ex: "O cliente relata...", "O cliente apresenta dificuldade com...")
-   - Inclua detalhes específicos mencionados pelo cliente (módulo, funcionalidade, erro, impacto no trabalho)
-   - Se o cliente mencionou urgência ou impacto no negócio, destaque isso
-   - Ignore apenas informações de contato como e-mail e nome da empresa
-   - Seja completo: o analista deve entender o problema sem precisar ler o ticket original
-
-2. "contexto": Forneça um resumo do contexto geral da situação com informações enriquecedoras:
-   - Qual módulo ou funcionalidade está envolvida
-   - Se há indícios de urgência ou impacto crítico no negócio do cliente
-   - Padrão de comportamento identificado (ex: erro recorrente, dúvida de uso, solicitação de feature)
-   - Qualquer detalhe adicional que ajude o analista a agir com mais assertividade e rapidez
-
-Responda APENAS com um JSON no formato:
-{{
-  "dor": "Texto completo e enriquecido da dor aqui.",
-  "contexto": "Texto completo do contexto enriquecido aqui."
-}}
-"""
+    resposta = chamar_contexto_ai(prompt, task_name="analisar_dor_obs2")
+    if not resposta:
+        return None
     try:
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json"
-            )
-        )
-        texto = response.text.strip().replace("```json", "").replace("```", "")
+        texto = resposta.replace("```json", "").replace("```", "").strip()
         return json.loads(texto)
     except Exception as e:
-        print(f"[obs2] Erro ao chamar Gemini: {e}")
+        print(f"[obs2] Erro ao processar JSON do Contexto.AI: {e}")
         return None
 
-
-# --- CANAL E CONTEÚDO ---
 
 def ticket_veio_por_chat(ticket):
     source = ticket.get("properties", {}).get("hs_object_source", "")
@@ -136,46 +97,32 @@ def extrair_conteudo_email(ticket_id):
     ]
     if not emails_cliente:
         return None
-    emails_cliente.sort(
-        key=lambda e: e.get("properties", {}).get("hs_createdate", ""),
-        reverse=False
-    )
+    emails_cliente.sort(key=lambda e: e.get("properties", {}).get("hs_createdate", ""))
     return emails_cliente[0].get("properties", {}).get("hs_email_text", "").strip()
 
 
-# --- HTML ---
-
 def gerar_html_obs2(company_id, total_tickets, canal, chat_encerrado, analise):
-    """Gera o HTML da Observação 2 com emojis e análise enriquecida do Gemini."""
-
-    # Cabeçalho
     html = "<p>🤖 <strong>[IA] ANÁLISE DO TICKET</strong></p><hr>"
 
-    # Informações da empresa
     if company_id and total_tickets is not None:
         html += f"<p>🏢 <strong>Tickets abertos pela empresa (últimos 30 dias):</strong> {total_tickets}</p>"
     else:
         html += "<p>🏢 <strong>Empresa:</strong> Não identificada neste ticket.</p>"
 
-    # Canal
     canal_emoji = "💬" if "Chat" in canal else "📧"
     html += f"<p>{canal_emoji} <strong>Canal de entrada:</strong> {canal}</p>"
 
-    # Status do chat
     if chat_encerrado is not None:
         status = "Chat encerrado pelo cliente ✅" if chat_encerrado else "Chat encerrado por timeout (2h) ⏱️"
         html += f"<p>🔔 <strong>Status do chat:</strong> {status}</p>"
 
     html += "<hr>"
 
-    # Dor e contexto analisados pelo Gemini
     if analise:
         dor = analise.get("dor", "")
         contexto = analise.get("contexto", "")
-
         if dor:
             html += f"<p>😣 <strong>Dor relatada pelo cliente:</strong></p><p>{dor}</p>"
-
         if contexto:
             html += f"<p>📋 <strong>Resumo e contexto:</strong></p><p>{contexto}</p>"
     else:
@@ -184,14 +131,10 @@ def gerar_html_obs2(company_id, total_tickets, canal, chat_encerrado, analise):
     return html
 
 
-# --- PRINCIPAL ---
-
 def processar_obs2(ticket_id):
     print(f"[obs2] Iniciando para ticket {ticket_id}...")
     print(f"[obs2] Aguardando 120 segundos...")
     time.sleep(120)
-
-    client = configurar_gemini()
 
     ticket = buscar_ticket(ticket_id)
     if not ticket:
@@ -206,8 +149,8 @@ def processar_obs2(ticket_id):
         tickets_30_dias = buscar_todos_tickets_empresa_30_dias(company_id)
         total_tickets = len(tickets_30_dias)
 
-    veio_por_chat = ticket_veio_por_chat(ticket)
     veio_por_bot = ticket_veio_por_bot(ticket)
+    veio_por_chat = ticket_veio_por_chat(ticket)
     canal = "Chat (via Bot)" if veio_por_bot else "Chat" if veio_por_chat else "Formulário/E-mail"
 
     conteudo_bruto = None
@@ -230,22 +173,15 @@ def processar_obs2(ticket_id):
             conteudo_bruto = props.get("content", "").strip() or None
 
     analise = None
-    if client and conteudo_bruto:
-        print(f"[obs2] Analisando conteúdo com Gemini...")
-        analise = analisar_com_gemini(client, conteudo_bruto, canal)
-    elif not client:
-        print(f"[obs2] Gemini não configurado. Pulando análise.")
+    if conteudo_bruto:
+        print(f"[obs2] Analisando conteúdo com Contexto.AI...")
+        analise = analisar_com_contexto_ai(conteudo_bruto, canal)
 
     conteudo_html = gerar_html_obs2(company_id, total_tickets, canal, chat_encerrado, analise)
-    sucesso = adicionar_observacao(
-        ticket_id,
-        "Observação 2 — Contexto e Dor do Ticket",
-        conteudo_html
-    )
+    sucesso = adicionar_observacao(ticket_id, "Observação 2 — Contexto e Dor do Ticket", conteudo_html)
 
     if sucesso:
         print(f"[obs2] ✅ Observação 2 adicionada ao ticket {ticket_id}.")
     else:
         print(f"[obs2] ❌ Falha ao adicionar Observação 2 ao ticket {ticket_id}.")
-
     return sucesso
