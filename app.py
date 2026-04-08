@@ -132,10 +132,10 @@ def worker_chat():
     Se o chat estiver encerrado, processa a Obs 2.
     Se passou 24h, processa com o que tem e remove da fila.
     """
-    print("[worker_chat] Iniciado, verificando chats a cada 1 hora...")
+    print("[worker_chat] Iniciado, verificando chats a cada 30 minutos...")
     while True:
         try:
-            time.sleep(3600)  # aguarda 1 hora
+            time.sleep(1800)  # aguarda 30 minutos
             print("[worker_chat] Iniciando varredura da fila de chats...")
 
             # Busca todos os tickets na fila de chat
@@ -317,5 +317,5 @@ if __name__ == "__main__":
     print(f"[servidor] Rodando na porta {porta}...")
     print(f"[servidor] Monitorando pipeline {PIPELINE_SUPORTE_ID}, estágio Novo (id={STAGE_NOVO}).")
     print(f"[servidor] Health check disponível em /health")
-    print(f"[servidor] Rotina de chats: varredura a cada 1h, timeout de {CHAT_TIMEOUT_HORAS}h.")
+    print(f"[servidor] Rotina de chats: varredura a cada 30min, timeout de {CHAT_TIMEOUT_HORAS}h.")
     HTTPServer(("0.0.0.0", porta), WebhookHandler).serve_forever()
