@@ -217,12 +217,20 @@ def verificar_e_disparar_obs3(ticket_id, requer_obs2=True):
 class WebhookHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
-        """Health check para o UptimeRobot manter o servidor acordado."""
         if self.path == "/health":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(b'{"status": "alive"}')
+        elif self.path == "/limpar-filas":
+            r.delete("fila_obs1")
+            r.delete("fila_obs2")
+            r.delete("fila_chat")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status": "filas limpas"}')
+            print("[admin] Filas limpas via endpoint /limpar-filas.")
         else:
             self.send_response(404)
             self.end_headers()
