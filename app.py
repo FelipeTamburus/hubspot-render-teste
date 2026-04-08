@@ -8,12 +8,14 @@ import redis
 from obs1_contexto_empresa import processar_obs1
 from obs2_dor_ticket import processar_obs2
 from obs3_similares import processar_obs3
+from categorizacao import processar_categorizacao
 
 PIPELINE_SUPORTE_ID = "0"
 STAGE_NOVO = "1"
 FILA_OBS1 = "fila_obs1"
 FILA_OBS2 = "fila_obs2"
 FILA_CHAT = "fila_chat"
+FILA_CATEG = "fila_categorizacao"
 CHAT_TIMEOUT_HORAS = 24
 
 r = redis.from_url(os.environ.get("REDIS_URL"))
@@ -77,6 +79,23 @@ def chat_esta_encerrado(thread_id):
 
 
 # --- WORKERS ---
+
+def worker_categorizacao():
+    """Worker de categorização — 1º a rodar, define prioridade e move para coluna correta."""
+    print("[worker_categ] Iniciado, aguardando tickets...")
+    while True:
+        try:
+            resultado = r.brpop(FILA_CATEG, timeout=10)
+            if resultado:
+                _, ticket_id = resultado
+                ticket_id = ticket_id.decode("utf-8")
+                print(f"[worker_categ] Categorizando ticket {ticket_id}...")
+                sucesso = processar_categorizacao(ticket_id)
+                print(f"[worker_categ] Categorização {'✅' if sucesso else '❌'} para ticket {ticket_id}.")
+        except Exception as e:
+            print(f"[worker_categ] Erro: {e}")
+            time.sleep(5)
+
 
 def worker_obs1():
     """Worker da Observação 1 — contexto da empresa e churn."""
@@ -236,6 +255,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
             r.delete("fila_obs1")
             r.delete("fila_obs2")
             r.delete("fila_chat")
+            r.delete("fila_categorizacao")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -245,6 +265,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
             obs1 = r.llen("fila_obs1")
             obs2 = r.llen("fila_obs2")
             chat = r.llen("fila_chat")
+            categ = r.llen("fila_categorizacao")
             tickets_chat = []
             for item in r.lrange("fila_chat", 0, -1):
                 try:
@@ -256,6 +277,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
             status = {
+                "fila_categorizacao": categ,
                 "fila_obs1": obs1,
                 "fila_obs2": obs2,
                 "fila_chat": chat,
@@ -266,7 +288,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(resposta)
-            print(f"[admin] Status das filas consultado: obs1={obs1}, obs2={obs2}, chat={chat}")
+            print(f"[admin] Status: categ={categ}, obs1={obs1}, obs2={obs2}, chat={chat}")
         else:
             self.send_response(404)
             self.end_headers()
@@ -302,26 +324,23 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
                 e_chat = ticket_e_chat(props)
 
-                if e_chat:
-                    print(f"[webhook] Ticket {ticket_id} é de CHAT. Adicionando à fila de chat e fila Obs1...")
+                # Categorização entra SEMPRE na fila (1º a rodar)
+                r.lpush(FILA_CATEG, ticket_id)
+                print(f"[webhook] Ticket {ticket_id} adicionado à fila de categorização.")
 
-                    # Obs 1 entra na fila normal com flag de chat
+                if e_chat:
+                    print(f"[webhook] Ticket {ticket_id} é de CHAT. Adicionando às filas de obs e chat...")
                     dados_obs1 = json.dumps({"ticket_id": ticket_id, "e_chat": True})
                     r.lpush(FILA_OBS1, dados_obs1)
-
-                    # Obs 2 vai para fila de chat (rotina horária)
                     dados_chat = json.dumps({
                         "ticket_id": ticket_id,
                         "timestamp": time.time()
                     })
                     r.lpush(FILA_CHAT, dados_chat)
-
-                    print(f"[webhook] Ticket {ticket_id} — Obs1 na fila normal, Obs2 na fila de chat.")
+                    print(f"[webhook] Ticket {ticket_id} — Categorização + Obs1 + fila de chat.")
 
                 else:
                     print(f"[webhook] Ticket {ticket_id} é de E-MAIL/FORMULÁRIO. Adicionando às filas normais...")
-
-                    # Obs 1 e Obs 2 entram nas filas normais
                     dados_obs1 = json.dumps({"ticket_id": ticket_id, "e_chat": False})
                     r.lpush(FILA_OBS1, dados_obs1)
                     r.lpush(FILA_OBS2, ticket_id)
@@ -335,6 +354,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
 # --- INÍCIO ---
 
 if __name__ == "__main__":
+    threading.Thread(target=worker_categorizacao, daemon=True).start()
     threading.Thread(target=worker_obs1, daemon=True).start()
     threading.Thread(target=worker_obs2, daemon=True).start()
     threading.Thread(target=worker_chat, daemon=True).start()
