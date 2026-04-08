@@ -116,7 +116,14 @@ def gerar_html_obs3(similares_empresa, similares_globais, demanda_atual, company
             resolucao_raw = buscar_resolucao_ticket(ticket_id)
             resumo = gerar_resumo_resolucao(demanda_atual, resolucao_raw)
             link = url_ticket(ticket_id)
-            html += f"<p><strong>{i+1}º Caso:</strong> {subject}<br><em>{resumo}</em><br><a href=\"{link}\">🔗 Clique aqui para visualizar o ticket</a></p>"
+            html += (
+                f"<p>"
+                f"<strong>{i+1}º Caso:</strong> {subject}<br>"
+                f"<em>{resumo}</em><br>"
+                f"<a href=\"{link}\">🔗 Clique aqui para visualizar o ticket</a>"
+                f"</p>"
+                f"<br>"
+            )
     elif company_id:
         html += f"<p>📌 <strong>HISTÓRICO DESTA EMPRESA (ID: {company_id})</strong></p>"
         html += "<p><em>Nenhum ticket similar resolvido encontrado para esta empresa.</em></p>"
@@ -136,7 +143,14 @@ def gerar_html_obs3(similares_empresa, similares_globais, demanda_atual, company
             resolucao_raw = buscar_resolucao_ticket(ticket_id)
             resumo = gerar_resumo_resolucao(demanda_atual, resolucao_raw)
             link = url_ticket(ticket_id)
-            html += f"<p><strong>{i+1}º Caso:</strong> {subject}<br><em>{resumo}</em><br><a href=\"{link}\">🔗 Clique aqui para visualizar o ticket</a></p>"
+            html += (
+                f"<p>"
+                f"<strong>{i+1}º Caso:</strong> {subject}<br>"
+                f"<em>{resumo}</em><br>"
+                f"<a href=\"{link}\">🔗 Clique aqui para visualizar o ticket</a>"
+                f"</p>"
+                f"<br>"
+            )
     else:
         html += "<p><em>Nenhum ticket similar resolvido encontrado na base geral.</em></p>"
 
