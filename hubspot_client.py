@@ -95,7 +95,12 @@ def buscar_tickets_resolvidos_globais(tipo_de_servico=None, limit=50):
 
 
 def buscar_todos_tickets_empresa_30_dias(company_id):
-    """Busca todos os tickets (qualquer status) de uma empresa nos últimos 30 dias."""
+    """
+    Busca todos os tickets da empresa na pipeline de suporte (id=0)
+    criados nos últimos 30 dias a partir de hoje.
+    """
+    data_limite = datetime.datetime.now(timezone.utc) - datetime.timedelta(days=30)
+    data_limite_ms = str(int(data_limite.timestamp() * 1000))
 
     url = f"{BASE_URL}/crm/v3/objects/tickets/search"
     payload = {
@@ -103,18 +108,22 @@ def buscar_todos_tickets_empresa_30_dias(company_id):
             "filters": [
                 {"propertyName": "id_empresa_ej", "operator": "EQ", "value": str(company_id)},
                 {"propertyName": "hs_pipeline", "operator": "EQ", "value": PIPELINE_SUPORTE},
+                {"propertyName": "createdate", "operator": "GTE", "value": data_limite_ms}
             ]
         }],
-        "properties": ["subject", "hs_ticket_priority", "createdate", "tipo_de_servico"],
+        "properties": ["subject", "hs_ticket_priority", "createdate", "tipo_de_servico",
+                       "demanda_apresentada_pelo_cliente", "content"],
         "sorts": [{"propertyName": "createdate", "direction": "DESCENDING"}],
         "limit": 100
     }
     try:
         response = requests.post(url, headers=HEADERS, json=payload, timeout=15)
         response.raise_for_status()
-        return response.json().get("results", [])
+        resultados = response.json().get("results", [])
+        print(f"[hubspot] {len(resultados)} tickets encontrados para empresa {company_id} nos últimos 30 dias (pipeline 0).")
+        return resultados
     except requests.exceptions.RequestException as e:
-        print(f"[hubspot] Erro ao buscar todos tickets empresa {company_id}: {e}")
+        print(f"[hubspot] Erro ao buscar tickets empresa {company_id}: {e}")
         return []
 
 
