@@ -181,6 +181,8 @@ def processar_obs3(ticket_id):
         print(f"[obs3] Buscando tickets similares da empresa {company_id}...")
         candidatos_empresa = buscar_tickets_empresa(company_id, stage=STAGE_RESOLVIDO)
         candidatos_empresa = [t for t in candidatos_empresa if t.get("id") != str(ticket_id)]
+        # Limita a 10 candidatos para não causar timeout no Contexto.AI
+        candidatos_empresa = candidatos_empresa[:10]
         if candidatos_empresa and demanda_atual:
             similares_empresa = selecionar_similares(demanda_atual, candidatos_empresa, max_resultados=3)
         elif candidatos_empresa:
@@ -191,6 +193,8 @@ def processar_obs3(ticket_id):
     candidatos_globais = buscar_tickets_resolvidos_globais(tipo_de_servico=tipo_de_servico)
     ids_ja_usados = {t.get("id") for t in similares_empresa} | {str(ticket_id)}
     candidatos_globais = [t for t in candidatos_globais if t.get("id") not in ids_ja_usados]
+    # Limita a 10 candidatos para não causar timeout no Contexto.AI
+    candidatos_globais = candidatos_globais[:10]
 
     similares_globais = []
     if candidatos_globais and demanda_atual:
