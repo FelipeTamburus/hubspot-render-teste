@@ -7,6 +7,7 @@ from contexto_ai_client import chamar_contexto_ai
 from hubspot_client import (
     buscar_ticket,
     buscar_company_id,
+    buscar_plano_empresa,
     buscar_todos_tickets_empresa_30_dias,
     adicionar_observacao
 )
@@ -42,11 +43,26 @@ Formato obrigatório:
         return subject or "Resumo não disponível."
 
 
-def calcular_churn(tickets_30_dias):
+PESOS_PLANO = {
+    "Trial":      {"pontos": 40, "descricao": "Trial — cliente ainda não converteu"},
+    "Starter":    {"pontos": 30, "descricao": "Starter — plano básico, maior risco"},
+    "Premium":    {"pontos": 30, "descricao": "Premium — plano básico, maior risco"},
+    "Standard":   {"pontos": 15, "descricao": "Standard — plano médio"},
+    "Convênio":   {"pontos": 15, "descricao": "Convênio — depende do acordo"},
+    "EasyCall":   {"pontos": 10, "descricao": "EasyCall — risco médio-baixo"},
+    "Growth":     {"pontos":  5, "descricao": "Growth — baixo risco, requer atenção"},
+    "Growth+":    {"pontos":  5, "descricao": "Growth+ — baixo risco, atenção especial"},
+    "Enterprise": {"pontos":  0, "descricao": "Enterprise — contrato robusto, baixíssimo risco"},
+    "legal_crm":  {"pontos":  0, "descricao": "Legal CRM — produto específico, baixíssimo risco"},
+}
+
+
+def calcular_churn(tickets_30_dias, plano=None):
     pontos = 0
     fatores = []
     total = len(tickets_30_dias)
 
+    # Fator: volume de tickets
     if total > 10:
         pontos += 50
         fatores.append(f"Mais de 10 tickets nos últimos 30 dias ({total} tickets)")
@@ -57,6 +73,7 @@ def calcular_churn(tickets_30_dias):
         pontos += 10
         fatores.append(f"{total} tickets nos últimos 30 dias")
 
+    # Fator: prioridade alta
     tem_high = any(
         t.get("properties", {}).get("hs_ticket_priority") == "HIGH"
         for t in tickets_30_dias
@@ -65,6 +82,7 @@ def calcular_churn(tickets_30_dias):
         pontos += 20
         fatores.append("Possui ticket(s) com prioridade ALTA")
 
+    # Fator: problema recorrente
     tipos = [t.get("properties", {}).get("tipo_de_servico", "") for t in tickets_30_dias]
     tipos = [t for t in tipos if t]
     if tipos:
@@ -73,9 +91,20 @@ def calcular_churn(tickets_30_dias):
             pontos += 25
             fatores.append(f"Problema recorrente: '{mais_comum[0]}' aparece {mais_comum[1]}x")
 
+    # Fator: cliente novo
     if total == 1:
         pontos -= 10
         fatores.append("Primeiro ticket da empresa (cliente novo)")
+
+    # Fator: plano contratado
+    if plano and plano in PESOS_PLANO:
+        peso_plano = PESOS_PLANO[plano]["pontos"]
+        desc_plano = PESOS_PLANO[plano]["descricao"]
+        pontos += peso_plano
+        if peso_plano > 0:
+            fatores.append(f"Plano {plano}: {desc_plano}")
+    elif plano:
+        fatores.append(f"Plano '{plano}' não mapeado — sem peso adicional")
 
     if pontos >= 85:
         classificacao = "🔴 Crítico"
@@ -99,11 +128,19 @@ def problema_mais_recorrente(tickets):
     return Counter(tipos).most_common(1)[0]
 
 
-def gerar_html_obs1(company_id, total, pontos, classificacao, fatores, recorrente, tickets_recentes):
+def gerar_html_obs1(company_id, total, pontos, classificacao, fatores, recorrente, tickets_recentes, plano):
     hoje = datetime.now(timezone.utc).strftime("%d/%m/%Y")
 
     html = "<p>🤖 <strong>[IA] CONTEXTO DA EMPRESA</strong></p><hr>"
     html += f"<p>📊 <strong>Total de tickets (últimos 30 dias):</strong> {total}</p>"
+
+    # Plano contratado
+    if plano:
+        peso = PESOS_PLANO.get(plano, {}).get("pontos", 0)
+        risco_plano = "🔴 Alto risco" if peso >= 30 else "🟡 Médio risco" if peso >= 10 else "🟢 Baixo risco"
+        html += f"<p>💼 <strong>Plano contratado:</strong> {plano} — {risco_plano}</p>"
+    else:
+        html += "<p>💼 <strong>Plano contratado:</strong> Não identificado</p>"
 
     if recorrente:
         html += f"<p>🔁 <strong>Problema mais recorrente:</strong> {recorrente[0]} ({recorrente[1]}x nos últimos 30 dias)</p>"
@@ -156,11 +193,14 @@ def processar_obs1(ticket_id):
     total = len(tickets_30_dias)
     print(f"[obs1] {total} tickets encontrados nos últimos 30 dias.")
 
-    pontos, classificacao, fatores = calcular_churn(tickets_30_dias)
+    # Busca plano contratado da empresa
+    plano = buscar_plano_empresa(company_id)
+
+    pontos, classificacao, fatores = calcular_churn(tickets_30_dias, plano=plano)
     recorrente = problema_mais_recorrente(tickets_30_dias)
     tickets_recentes = tickets_30_dias[:3]
 
-    conteudo_html = gerar_html_obs1(company_id, total, pontos, classificacao, fatores, recorrente, tickets_recentes)
+    conteudo_html = gerar_html_obs1(company_id, total, pontos, classificacao, fatores, recorrente, tickets_recentes, plano)
     sucesso = adicionar_observacao(ticket_id, "Observação 1 — Contexto da Empresa", conteudo_html)
 
     if sucesso:
