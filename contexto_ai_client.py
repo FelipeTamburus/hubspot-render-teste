@@ -55,7 +55,7 @@ def chamar_contexto_ai(user_message, task_name="geral", retentativa=False):
                 "user_message": (None, user_message),
                 "use_super_conhecimento": (None, "false")
             },
-            timeout=60
+            timeout=120
         )
 
         if response.status_code == 401 and not retentativa:
