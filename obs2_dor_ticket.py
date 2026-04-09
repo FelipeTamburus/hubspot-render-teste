@@ -4,7 +4,7 @@ import json
 from contexto_ai_client import chamar_contexto_ai
 from hubspot_client import (
     buscar_ticket,
-    buscar_company_id,
+    buscar_id_empresa_ej,
     buscar_thread_conversa,
     chat_esta_encerrado,
     buscar_mensagens_chat,
@@ -101,10 +101,10 @@ def extrair_conteudo_email(ticket_id):
     return emails_cliente[0].get("properties", {}).get("hs_email_text", "").strip()
 
 
-def gerar_html_obs2(company_id, total_tickets, canal, chat_encerrado, analise):
+def gerar_html_obs2(company_ej_id, total_tickets, canal, chat_encerrado, analise):
     html = "<p>🤖 <strong>[IA] ANÁLISE DO TICKET</strong></p><hr>"
 
-    if company_id and total_tickets is not None:
+    if company_ej_id and total_tickets is not None:
         html += f"<p>🏢 <strong>Tickets abertos pela empresa (últimos 30 dias):</strong> {total_tickets}</p>"
     else:
         html += "<p>🏢 <strong>Empresa:</strong> Não identificada neste ticket.</p>"
@@ -142,12 +142,15 @@ def processar_obs2(ticket_id):
         return False
 
     props = ticket.get("properties", {})
-    company_id = buscar_company_id(ticket_id)
+
+    # Usa id_empresa_ej para buscar tickets da empresa (mesma fonte que Obs 1)
+    company_ej_id = buscar_id_empresa_ej(ticket_id)
 
     total_tickets = None
-    if company_id:
-        tickets_30_dias = buscar_todos_tickets_empresa_30_dias(company_id)
+    if company_ej_id:
+        tickets_30_dias = buscar_todos_tickets_empresa_30_dias(company_ej_id)
         total_tickets = len(tickets_30_dias)
+        print(f"[obs2] {total_tickets} tickets encontrados para empresa EJ {company_ej_id}.")
 
     veio_por_bot = ticket_veio_por_bot(ticket)
     veio_por_chat = ticket_veio_por_chat(ticket)
@@ -177,7 +180,7 @@ def processar_obs2(ticket_id):
         print(f"[obs2] Analisando conteúdo com Contexto.AI...")
         analise = analisar_com_contexto_ai(conteudo_bruto, canal)
 
-    conteudo_html = gerar_html_obs2(company_id, total_tickets, canal, chat_encerrado, analise)
+    conteudo_html = gerar_html_obs2(company_ej_id, total_tickets, canal, chat_encerrado, analise)
     sucesso = adicionar_observacao(ticket_id, "Observação 2 — Contexto e Dor do Ticket", conteudo_html)
 
     if sucesso:
