@@ -7,7 +7,9 @@ from contexto_ai_client import chamar_contexto_ai
 from hubspot_client import (
     buscar_ticket,
     buscar_company_id,
+    buscar_id_empresa_ej,
     buscar_plano_empresa,
+    buscar_plano_do_ticket,
     buscar_todos_tickets_empresa_30_dias,
     adicionar_observacao
 )
@@ -180,21 +182,27 @@ def processar_obs1(ticket_id):
         print(f"[obs1] Ticket {ticket_id} não encontrado. Abortando.")
         return False
 
+    # ID HubSpot da empresa — para buscar plano
     company_id = buscar_company_id(ticket_id)
-    if not company_id:
+    # ID EasyJur da empresa — para buscar tickets similares
+    company_ej_id = buscar_id_empresa_ej(ticket_id)
+
+    if not company_id and not company_ej_id:
         print(f"[obs1] Ticket {ticket_id} sem empresa associada.")
         html = "<p>🤖 <strong>[IA] CONTEXTO DA EMPRESA</strong></p><hr><p>⚠️ Empresa não identificada neste ticket. Nenhum dado de contexto disponível.</p>"
         adicionar_observacao(ticket_id, "Observação 1 — Contexto da Empresa", html)
         return True
 
-    print(f"[obs1] Empresa identificada: {company_id}")
-    tickets_30_dias = buscar_todos_tickets_empresa_30_dias(company_id)
+    print(f"[obs1] Empresa HubSpot: {company_id} | Empresa EJ: {company_ej_id}")
+
+    # Busca tickets dos últimos 30 dias usando id_empresa_ej
+    tickets_30_dias = buscar_todos_tickets_empresa_30_dias(company_ej_id) if company_ej_id else []
     tickets_30_dias = [t for t in tickets_30_dias if t.get("id") != str(ticket_id)]
     total = len(tickets_30_dias)
     print(f"[obs1] {total} tickets encontrados nos últimos 30 dias.")
 
-    # Busca plano contratado da empresa
-    plano = buscar_plano_empresa(company_id)
+    # Busca plano usando ID HubSpot da empresa
+    plano = buscar_plano_do_ticket(ticket_id)
 
     pontos, classificacao, fatores = calcular_churn(tickets_30_dias, plano=plano)
     recorrente = problema_mais_recorrente(tickets_30_dias)
