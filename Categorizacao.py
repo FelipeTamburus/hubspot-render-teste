@@ -6,6 +6,7 @@ from hubspot_client import (
     buscar_ticket,
     buscar_company_id,
     buscar_plano_empresa,
+    buscar_plano_do_ticket,
     buscar_thread_conversa,
     chat_esta_encerrado,
     buscar_mensagens_chat,
@@ -215,7 +216,7 @@ MÓDULOS disponíveis:
 - produtos_ia: JurisAI, SmartDocs, Controladoria Inteligente
 
 TIPOS DE PROBLEMA:
-- falha_critica: sistema não funciona, dados perdidos, processo não capturado, erro que impede trabalho, falha na captura de piblicacoes, perda de prazo
+- falha_critica: sistema não funciona, dados perdidos, processo não capturado, erro que impede trabalho
 - bug: comportamento incorreto mas sistema ainda funciona parcialmente
 - duvida: pergunta sobre como usar uma funcionalidade, como funciona algo
 - configuracao: ajuste de configuração, preferência, setup inicial
@@ -325,7 +326,7 @@ def processar_categorizacao(ticket_id):
 
     # Busca plano da empresa
     company_id = buscar_company_id(ticket_id)
-    plano = buscar_plano_empresa(company_id) if company_id else None
+    plano = buscar_plano_do_ticket(ticket_id)
     print(f"[categ] Plano: {plano or 'Não identificado'}")
 
     # Pré-detecção por palavras-chave
