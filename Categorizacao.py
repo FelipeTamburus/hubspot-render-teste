@@ -215,7 +215,7 @@ MÓDULOS disponíveis:
 - produtos_ia: JurisAI, SmartDocs, Controladoria Inteligente
 
 TIPOS DE PROBLEMA:
-- falha_critica: sistema não funciona, dados perdidos, processo não capturado, erro que impede trabalho
+- falha_critica: sistema não funciona, dados perdidos, processo não capturado, erro que impede trabalho, falha na captura de piblicacoes, perda de prazo
 - bug: comportamento incorreto mas sistema ainda funciona parcialmente
 - duvida: pergunta sobre como usar uma funcionalidade, como funciona algo
 - configuracao: ajuste de configuração, preferência, setup inicial
