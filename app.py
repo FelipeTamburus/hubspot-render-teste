@@ -231,6 +231,90 @@ def verificar_e_disparar_obs3(ticket_id, requer_obs2=True):
         threading.Thread(target=processar_obs3, args=(ticket_id,), daemon=True).start()
 
 
+# --- REPROCESSAMENTO MANUAL ---
+
+def buscar_tickets_estagio_novo():
+    """Busca todos os tickets no estágio Novo da pipeline de suporte via API HubSpot."""
+    url = "https://api.hubapi.com/crm/v3/objects/tickets/search"
+    todos = []
+    after = None
+
+    while True:
+        payload = {
+            "filterGroups": [{
+                "filters": [
+                    {"propertyName": "hs_pipeline", "operator": "EQ", "value": PIPELINE_SUPORTE_ID},
+                    {"propertyName": "hs_pipeline_stage", "operator": "EQ", "value": STAGE_NOVO}
+                ]
+            }],
+            "properties": ["subject", "hs_pipeline", "hs_pipeline_stage", "hs_object_source"],
+            "sorts": [{"propertyName": "createdate", "direction": "DESCENDING"}],
+            "limit": 100
+        }
+        if after:
+            payload["after"] = after
+
+        try:
+            response = requests.post(url, headers=HEADERS, json=payload, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+            todos.extend(data.get("results", []))
+            paging = data.get("paging", {}).get("next", {}).get("after")
+            if paging:
+                after = paging
+            else:
+                break
+        except Exception as e:
+            print(f"[reprocessar] Erro ao buscar tickets novos: {e}")
+            break
+
+    return todos
+
+
+def reprocessar_tickets_novos():
+    """
+    Busca todos os tickets no estágio Novo da pipeline de suporte
+    e coloca cada um nas filas de categorização e observações.
+    Responde imediatamente ao endpoint e roda em background.
+    """
+    print("[reprocessar] Iniciando busca de tickets no estágio Novo...")
+    tickets = buscar_tickets_estagio_novo()
+    total = len(tickets)
+    print(f"[reprocessar] {total} ticket(s) encontrado(s) no estágio Novo.")
+
+    if not tickets:
+        print("[reprocessar] Nenhum ticket para reprocessar.")
+        return
+
+    adicionados = 0
+    for ticket in tickets:
+        ticket_id = str(ticket.get("id", ""))
+        if not ticket_id:
+            continue
+
+        props = ticket.get("properties", {})
+        e_chat = "CHAT" in props.get("hs_object_source", "").upper() or "bot" in props.get("subject", "").lower()
+
+        # Fila de categorização
+        r.lpush(FILA_CATEG, ticket_id)
+
+        # Filas de observações
+        if e_chat:
+            dados_obs1 = json.dumps({"ticket_id": ticket_id, "e_chat": True})
+            r.lpush(FILA_OBS1, dados_obs1)
+            dados_chat = json.dumps({"ticket_id": ticket_id, "timestamp": time.time()})
+            r.lpush(FILA_CHAT, dados_chat)
+        else:
+            dados_obs1 = json.dumps({"ticket_id": ticket_id, "e_chat": False})
+            r.lpush(FILA_OBS1, dados_obs1)
+            r.lpush(FILA_OBS2, ticket_id)
+
+        adicionados += 1
+        print(f"[reprocessar] Ticket {ticket_id} adicionado às filas ({'chat' if e_chat else 'e-mail'}).")
+
+    print(f"[reprocessar] ✅ {adicionados}/{total} tickets adicionados às filas.")
+
+
 # --- WEBHOOK ---
 
 class WebhookHandler(BaseHTTPRequestHandler):
@@ -289,6 +373,13 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(resposta)
             print(f"[admin] Status: categ={categ}, obs1={obs1}, obs2={obs2}, chat={chat}")
+        elif self.path == "/reprocessar-novos":
+            threading.Thread(target=reprocessar_tickets_novos, daemon=True).start()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status": "reprocessamento iniciado em background"}')
+            print("[admin] Reprocessamento de tickets novos iniciado via endpoint.")
         else:
             self.send_response(404)
             self.end_headers()
