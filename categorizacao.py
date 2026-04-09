@@ -365,6 +365,15 @@ def processar_categorizacao(ticket_id):
 
     stage_id = COLUNAS_PIPELINE[prioridade_final]
 
+    # Para tickets de chat: verifica se ainda está no estágio Novo antes de mover
+    # Se o analista já moveu o ticket, não altera coluna nem prioridade
+    if e_chat:
+        ticket_atual = buscar_ticket(ticket_id)
+        estagio_atual = ticket_atual.get("properties", {}).get("hs_pipeline_stage", "") if ticket_atual else ""
+        if estagio_atual != "1":
+            print(f"[categ] Ticket {ticket_id} de chat já foi movido pelo analista (estágio atual: {estagio_atual}). Não alterando coluna.")
+            return True
+
     # Atualiza no HubSpot
     sucesso = atualizar_ticket_hubspot(ticket_id, prioridade_final, stage_id)
 
