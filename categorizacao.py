@@ -297,13 +297,16 @@ def atualizar_ticket_hubspot(ticket_id, prioridade, stage_id):
 def processar_categorizacao(ticket_id):
     """
     Função principal de categorização.
-    1. Aguarda chat fechar se necessário
-    2. Extrai conteúdo completo
-    3. Identifica módulo + tipo + prioridade base via Contexto.AI
-    4. Aplica ajuste por tipo de problema
-    5. Atualiza HubSpot e move para coluna correta
+    1. Aguarda 30s para o HubSpot propagar propriedades (ex: plano_contratado_easyjur)
+    2. Aguarda chat fechar se necessário
+    3. Extrai conteúdo completo
+    4. Identifica módulo + tipo + prioridade base via Contexto.AI
+    5. Aplica ajuste por tipo de problema
+    6. Atualiza HubSpot e move para coluna correta
     """
     print(f"[categ] Iniciando categorização do ticket {ticket_id}...")
+    print(f"[categ] Aguardando 30s para propagação das propriedades no HubSpot...")
+    time.sleep(30)
 
     ticket = buscar_ticket(ticket_id)
     if not ticket:
