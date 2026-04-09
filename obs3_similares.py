@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timezone
 from contexto_ai_client import chamar_contexto_ai
 from hubspot_client import (
+    buscar_id_empresa_ej,
     buscar_ticket,
     buscar_company_id,
     buscar_tickets_empresa,
@@ -266,16 +267,17 @@ def processar_obs3(ticket_id):
         or props.get("subject", "")
     )
     tipo_de_servico = props.get("tipo_de_servico", "")
+    company_ej_id = buscar_id_empresa_ej(ticket_id)
     company_id = buscar_company_id(ticket_id)
 
     # Busca conteúdo completo do ticket atual para palavras-chave
     conteudo_atual = buscar_conteudo_ticket_atual(ticket_id, props)
 
-    # Tickets similares da empresa
+    # Tickets similares da empresa — usa id_empresa_ej para filtrar
     similares_empresa = []
-    if company_id:
-        print(f"[obs3] Buscando tickets similares da empresa {company_id}...")
-        candidatos_empresa = buscar_tickets_empresa(company_id, stage=STAGE_RESOLVIDO)
+    if company_ej_id:
+        print(f"[obs3] Buscando tickets similares da empresa EJ {company_ej_id}...")
+        candidatos_empresa = buscar_tickets_empresa(company_ej_id, stage=STAGE_RESOLVIDO)
         candidatos_empresa = [t for t in candidatos_empresa if t.get("id") != str(ticket_id)]
         if candidatos_empresa and conteudo_atual:
             similares_empresa = selecionar_similares(conteudo_atual, candidatos_empresa, max_resultados=3)
@@ -294,7 +296,7 @@ def processar_obs3(ticket_id):
     elif candidatos_globais:
         similares_globais = candidatos_globais[:3]
 
-    conteudo_html = gerar_html_obs3(similares_empresa, similares_globais, demanda_atual, company_id)
+    conteudo_html = gerar_html_obs3(similares_empresa, similares_globais, demanda_atual, company_ej_id)
     sucesso = adicionar_observacao(ticket_id, "Observação 3 — Tickets Similares e Resolução", conteudo_html)
 
     if sucesso:
