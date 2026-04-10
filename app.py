@@ -34,7 +34,7 @@ ultima_varredura_chat = None
 # --- HELPERS ---
 
 def verificar_ticket_elegivel(ticket_id):
-    url = f"https://api.hubapi.com/crm/v3/objects/tickets/{ticket_id}?properties=hs_pipeline,hs_pipeline_stage,hs_object_source,subject"
+    url = f"https://api.hubapi.com/crm/v3/objects/tickets/{ticket_id}?properties=hs_pipeline,hs_pipeline_stage,hs_object_source,subject,createdate"
     try:
         response = requests.get(url, headers=HEADERS, timeout=10)
         response.raise_for_status()
@@ -187,6 +187,15 @@ def worker_chat():
                     timestamp_entrada = dados["timestamp"]
                     createdate = dados.get("createdate")
                     horas_na_fila = (time.time() - timestamp_entrada) / 3600
+
+                    # Se createdate não está na fila, busca da API
+                    if not createdate:
+                        try:
+                            url_t = f"https://api.hubapi.com/crm/v3/objects/tickets/{ticket_id}?properties=createdate"
+                            resp_t = requests.get(url_t, headers=HEADERS, timeout=10)
+                            createdate = resp_t.json().get("properties", {}).get("createdate")
+                        except Exception:
+                            pass
                     if r.exists(f"obs2_concluida:{ticket_id}"):
                         print(f"[worker_chat] Ticket {ticket_id} já processado. Removendo da fila.")
                         r.lrem(FILA_CHAT, 0, item)
@@ -251,6 +260,15 @@ def varredura_manual_chats():
             timestamp_entrada = dados["timestamp"]
             createdate = dados.get("createdate")
             horas_na_fila = (time.time() - timestamp_entrada) / 3600
+
+            # Se createdate não está na fila, busca da API
+            if not createdate:
+                try:
+                    url_t = f"https://api.hubapi.com/crm/v3/objects/tickets/{ticket_id}?properties=createdate"
+                    resp_t = requests.get(url_t, headers=HEADERS, timeout=10)
+                    createdate = resp_t.json().get("properties", {}).get("createdate")
+                except Exception:
+                    pass
             if r.exists(f"obs2_concluida:{ticket_id}"):
                 print(f"[admin] Ticket {ticket_id} já processado. Removendo da fila.")
                 r.lrem(FILA_CHAT, 0, item)
