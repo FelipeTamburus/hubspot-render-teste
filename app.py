@@ -26,6 +26,8 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
+ultima_varredura_chat = None  # registra quando foi a última varredura do worker_chat
+
 
 # --- HELPERS ---
 
@@ -151,10 +153,12 @@ def worker_chat():
     Se o chat estiver encerrado, processa a Obs 2.
     Se passou 24h, processa com o que tem e remove da fila.
     """
+    global ultima_varredura_chat
     print("[worker_chat] Iniciado, verificando chats a cada 30 minutos...")
     while True:
         try:
             time.sleep(1800)  # aguarda 30 minutos
+            ultima_varredura_chat = time.time()
             print("[worker_chat] Iniciando varredura da fila de chats...")
 
             # Busca todos os tickets na fila de chat
@@ -373,6 +377,37 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(resposta)
             print(f"[admin] Status: categ={categ}, obs1={obs1}, obs2={obs2}, chat={chat}")
+        elif self.path == "/proxima-varredura":
+            import datetime
+            agora = time.time()
+            intervalo = 1800  # 30 minutos em segundos
+
+            if ultima_varredura_chat is None:
+                # Worker ainda não rodou desde o início do servidor
+                segundos_desde_inicio = agora - servidor_iniciado_em
+                segundos_para_proxima = max(0, intervalo - segundos_desde_inicio)
+            else:
+                segundos_desde_ultima = agora - ultima_varredura_chat
+                segundos_para_proxima = max(0, intervalo - segundos_desde_ultima)
+
+            proxima_ts = agora + segundos_para_proxima
+            proxima_str = datetime.datetime.fromtimestamp(proxima_ts).strftime("%H:%M:%S")
+            ultima_str = datetime.datetime.fromtimestamp(ultima_varredura_chat).strftime("%H:%M:%S") if ultima_varredura_chat else "ainda não rodou"
+
+            mins = int(segundos_para_proxima // 60)
+            segs = int(segundos_para_proxima % 60)
+
+            status = {
+                "ultima_varredura": ultima_str,
+                "proxima_varredura": proxima_str,
+                "em_minutos": f"{mins}min {segs}s",
+                "tickets_na_fila_chat": r.llen("fila_chat")
+            }
+            resposta = json.dumps(status, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(resposta)
         elif self.path == "/reprocessar-novos":
             threading.Thread(target=reprocessar_tickets_novos, daemon=True).start()
             self.send_response(200)
@@ -445,6 +480,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
 # --- INÍCIO ---
 
 if __name__ == "__main__":
+    servidor_iniciado_em = time.time()
     threading.Thread(target=worker_categorizacao, daemon=True).start()
     threading.Thread(target=worker_obs1, daemon=True).start()
     threading.Thread(target=worker_obs2, daemon=True).start()
