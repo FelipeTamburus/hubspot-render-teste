@@ -193,6 +193,7 @@ def chat_esta_encerrado(thread_id):
 
         agora = datetime.datetime.now(datetime.timezone.utc)
         horas_inativo = (agora - ultimo_timestamp).total_seconds() / 3600
+        print(f"[hubspot] Thread {thread_id} — última mensagem: {ultimo_timestamp.strftime('%d/%m %H:%M')} — inativa há {horas_inativo:.1f}h")
 
         if horas_inativo >= HORAS_INATIVIDADE:
             print(f"[hubspot] Thread {thread_id} inativa há {horas_inativo:.1f}h. Processando como encerrada.")
