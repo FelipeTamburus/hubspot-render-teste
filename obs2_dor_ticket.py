@@ -131,7 +131,7 @@ def gerar_html_obs2(company_ej_id, total_tickets, canal, chat_encerrado, analise
     return html
 
 
-def processar_obs2(ticket_id):
+def processar_obs2(ticket_id, forcar=False):
     print(f"[obs2] Iniciando para ticket {ticket_id}...")
     print(f"[obs2] Aguardando 120 segundos...")
     time.sleep(120)
@@ -162,7 +162,10 @@ def processar_obs2(ticket_id):
     if veio_por_chat or veio_por_bot:
         thread_id = buscar_thread_conversa(ticket_id)
         if thread_id:
-            if not chat_esta_encerrado(thread_id):
+            if forcar:
+                print(f"[obs2] Forçando processamento sem aguardar chat fechar.")
+                chat_encerrado = True
+            elif not chat_esta_encerrado(thread_id):
                 chat_encerrado = aguardar_chat_encerrado(thread_id)
             else:
                 chat_encerrado = True
