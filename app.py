@@ -381,6 +381,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
             import datetime
             agora = time.time()
             intervalo = 1800  # 30 minutos em segundos
+            fuso_brasilia = datetime.timezone(datetime.timedelta(hours=-3))
 
             if ultima_varredura_chat is None:
                 # Worker ainda não rodou desde o início do servidor
@@ -391,13 +392,14 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 segundos_para_proxima = max(0, intervalo - segundos_desde_ultima)
 
             proxima_ts = agora + segundos_para_proxima
-            proxima_str = datetime.datetime.fromtimestamp(proxima_ts).strftime("%H:%M:%S")
-            ultima_str = datetime.datetime.fromtimestamp(ultima_varredura_chat).strftime("%H:%M:%S") if ultima_varredura_chat else "ainda não rodou"
+            proxima_str = datetime.datetime.fromtimestamp(proxima_ts, tz=fuso_brasilia).strftime("%H:%M:%S")
+            ultima_str = datetime.datetime.fromtimestamp(ultima_varredura_chat, tz=fuso_brasilia).strftime("%H:%M:%S") if ultima_varredura_chat else "ainda não rodou"
 
             mins = int(segundos_para_proxima // 60)
             segs = int(segundos_para_proxima % 60)
 
             status = {
+                "fuso": "America/Sao_Paulo (UTC-3)",
                 "ultima_varredura": ultima_str,
                 "proxima_varredura": proxima_str,
                 "em_minutos": f"{mins}min {segs}s",
