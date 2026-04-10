@@ -146,7 +146,10 @@ def ticket_e_chat(ticket):
 
 
 def aguardar_chat_encerrado(thread_id):
-    """Aguarda o chat ser encerrado com timeout de 24h."""
+    """
+    Aguarda o chat ser encerrado com timeout de 24h.
+    Verifica status + inatividade de 5h (mesma regra do worker_chat).
+    """
     tempo_aguardado = 0
     print(f"[categ] Aguardando chat {thread_id} ser encerrado...")
     while tempo_aguardado < TIMEOUT_CHAT_SEGUNDOS:
@@ -294,11 +297,11 @@ def atualizar_ticket_hubspot(ticket_id, prioridade, stage_id):
         return False
 
 
-def processar_categorizacao(ticket_id):
+def processar_categorizacao(ticket_id, forcar=False):
     """
     Função principal de categorização.
     1. Aguarda 30s para o HubSpot propagar propriedades (ex: plano_contratado_easyjur)
-    2. Aguarda chat fechar se necessário
+    2. Aguarda chat fechar se necessário (pulado se forcar=True)
     3. Extrai conteúdo completo
     4. Identifica módulo + tipo + prioridade base via Contexto.AI
     5. Aplica ajuste por tipo de problema
@@ -313,12 +316,14 @@ def processar_categorizacao(ticket_id):
         print(f"[categ] Ticket {ticket_id} não encontrado. Abortando.")
         return False
 
-    # Aguarda chat fechar se necessário
+    # Aguarda chat fechar se necessário (pula se forcar=True)
     e_chat = ticket_e_chat(ticket)
-    if e_chat:
+    if e_chat and not forcar:
         thread_id = buscar_thread_conversa(ticket_id)
         if thread_id and not chat_esta_encerrado(thread_id):
             aguardar_chat_encerrado(thread_id)
+    elif e_chat and forcar:
+        print(f"[categ] Forçando categorização sem aguardar chat fechar.")
 
     # Extrai conteúdo completo
     conteudo = extrair_conteudo_ticket(ticket_id, ticket)
