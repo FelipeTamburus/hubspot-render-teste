@@ -160,18 +160,17 @@ def chat_tem_fim_expediente(thread_id):
     O texto real está no campo richText em formato HTML — as tags são removidas antes de comparar.
     """
     TEXTO_FIM_EXPEDIENTE = "Nosso horário de atendimento se encerrou"
-    import re
+    import re, html as html_module
 
     def strip_html(texto):
-        """Remove tags HTML de uma string."""
         if not texto:
             return ""
+        texto = html_module.unescape(texto)
         return re.sub(r'<[^>]+>', '', texto).strip()
 
     try:
         mensagens = buscar_mensagens_chat(thread_id)
         for msg in mensagens:
-            # Busca em todos os campos, removendo HTML antes de comparar
             campos = [
                 msg.get("text", "") or "",
                 msg.get("richText", "") or "",
@@ -185,6 +184,9 @@ def chat_tem_fim_expediente(thread_id):
                     nome = remetente.get("name", "bot")
                     print(f"[hubspot] Fim de expediente detectado na thread {thread_id} (remetente: {nome}).")
                     return True
+                # Log temporário para diagnóstico
+                if "horário" in texto_limpo.lower() or "encerrou" in texto_limpo.lower():
+                    print(f"[hubspot] DEBUG thread {thread_id} — texto próximo: {texto_limpo[:80]}")
         return False
     except Exception as e:
         print(f"[hubspot] Erro ao verificar fim de expediente na thread {thread_id}: {e}")
