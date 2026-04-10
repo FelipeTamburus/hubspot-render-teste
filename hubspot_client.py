@@ -164,9 +164,7 @@ def chat_tem_fim_expediente(thread_id):
     TEXTO_FIM_EXPEDIENTE = "Nosso horário de atendimento se encerrou"
     try:
         mensagens = buscar_mensagens_chat(thread_id)
-        print(f"[hubspot] Verificando fim de expediente em {len(mensagens)} mensagens da thread {thread_id}.")
         for msg in mensagens:
-            # Busca o texto em todos os campos possíveis
             texto = (
                 msg.get("text", "") or
                 msg.get("body", "") or
@@ -179,7 +177,6 @@ def chat_tem_fim_expediente(thread_id):
                 nome = remetente.get("name", "desconhecido")
                 print(f"[hubspot] Mensagem de fim de expediente detectada na thread {thread_id} (remetente: {nome}).")
                 return True
-        print(f"[hubspot] Mensagem de fim de expediente NÃO encontrada na thread {thread_id}.")
         return False
     except Exception as e:
         print(f"[hubspot] Erro ao verificar fim de expediente na thread {thread_id}: {e}")
