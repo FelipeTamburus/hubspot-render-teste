@@ -3,6 +3,7 @@ import json
 import os
 import threading
 import time
+import datetime
 import requests
 import redis
 from obs1_contexto_empresa import processar_obs1
@@ -65,14 +66,47 @@ def buscar_thread_chat(ticket_id):
         return None
 
 
-def chat_esta_encerrado(thread_id):
-    """Verifica se o chat está encerrado."""
+HORAS_CHAT_PADRAO = 4
+REDIS_KEY_HORAS_CHAT = "config:horas_chat"
+
+
+def get_horas_chat():
+    """Busca o limite de horas configurado no Redis. Padrão: 4 horas."""
+    try:
+        val = r.get(REDIS_KEY_HORAS_CHAT)
+        if val:
+            return float(val.decode("utf-8"))
+    except Exception:
+        pass
+    return HORAS_CHAT_PADRAO
+
+
+def chat_esta_encerrado(thread_id, criado_em_ms=None):
+    """
+    Verifica se o chat está encerrado. Considera encerrado se:
+    1. Status da thread é ENDED, CLOSED ou ARCHIVED
+    2. OU o ticket foi criado há mais de X horas (configurável via /config-horas-chat)
+    """
     url = f"https://api.hubapi.com/conversations/v3/conversations/threads/{thread_id}"
     try:
         response = requests.get(url, headers=HEADERS, timeout=10)
         response.raise_for_status()
         status = response.json().get("status", "")
-        return status in ["ENDED", "CLOSED", "ARCHIVED"]
+        if status in ["ENDED", "CLOSED", "ARCHIVED"]:
+            return True
+
+        # Verifica tempo de abertura se timestamp fornecido
+        if criado_em_ms:
+            import datetime as dt
+            horas_limite = get_horas_chat()
+            criado_em = dt.datetime.fromisoformat(criado_em_ms.replace("Z", "+00:00"))
+            agora = dt.datetime.now(dt.timezone.utc)
+            horas_aberto = (agora - criado_em).total_seconds() / 3600
+            if horas_aberto >= horas_limite:
+                print(f"[chat] Thread {thread_id} aberta há {horas_aberto:.1f}h (limite: {horas_limite}h). Processando.")
+                return True
+
+        return False
     except Exception as e:
         print(f"[chat] Erro ao verificar status da thread {thread_id}: {e}")
         return False
@@ -151,6 +185,7 @@ def worker_chat():
                     dados = json.loads(item.decode("utf-8"))
                     ticket_id = dados["ticket_id"]
                     timestamp_entrada = dados["timestamp"]
+                    createdate = dados.get("createdate")
                     horas_na_fila = (time.time() - timestamp_entrada) / 3600
                     if r.exists(f"obs2_concluida:{ticket_id}"):
                         print(f"[worker_chat] Ticket {ticket_id} já processado. Removendo da fila.")
@@ -159,7 +194,7 @@ def worker_chat():
                     thread_id = buscar_thread_chat(ticket_id)
                     encerrado = False
                     if thread_id:
-                        encerrado = chat_esta_encerrado(thread_id)
+                        encerrado = chat_esta_encerrado(thread_id, criado_em_ms=createdate)
                     if encerrado:
                         print(f"[worker_chat] Chat do ticket {ticket_id} encerrado. Processando Obs 2...")
                         threading.Thread(target=processar_obs2_chat, args=(ticket_id, item), daemon=True).start()
@@ -167,7 +202,8 @@ def worker_chat():
                         print(f"[worker_chat] Ticket {ticket_id} na fila há {horas_na_fila:.1f}h. Processando com o que tem...")
                         threading.Thread(target=processar_obs2_chat, args=(ticket_id, item), daemon=True).start()
                     else:
-                        print(f"[worker_chat] Ticket {ticket_id} — chat ainda aberto ({horas_na_fila:.1f}h na fila). Aguardando...")
+                        horas_limite = get_horas_chat()
+                        print(f"[worker_chat] Ticket {ticket_id} — chat ainda aberto ({horas_na_fila:.1f}h na fila · limite: {horas_limite}h). Aguardando...")
                 except Exception as e:
                     print(f"[worker_chat] Erro ao processar item da fila: {e}")
         except Exception as e:
@@ -213,6 +249,7 @@ def varredura_manual_chats():
             dados = json.loads(item.decode("utf-8"))
             ticket_id = dados["ticket_id"]
             timestamp_entrada = dados["timestamp"]
+            createdate = dados.get("createdate")
             horas_na_fila = (time.time() - timestamp_entrada) / 3600
             if r.exists(f"obs2_concluida:{ticket_id}"):
                 print(f"[admin] Ticket {ticket_id} já processado. Removendo da fila.")
@@ -221,7 +258,7 @@ def varredura_manual_chats():
             thread_id = buscar_thread_chat(ticket_id)
             encerrado = False
             if thread_id:
-                encerrado = chat_esta_encerrado(thread_id)
+                encerrado = chat_esta_encerrado(thread_id, criado_em_ms=createdate)
             if encerrado:
                 print(f"[admin] Chat do ticket {ticket_id} encerrado. Processando Obs 2...")
                 threading.Thread(target=processar_obs2_chat, args=(ticket_id, item), daemon=True).start()
@@ -229,7 +266,8 @@ def varredura_manual_chats():
                 print(f"[admin] Ticket {ticket_id} na fila há {horas_na_fila:.1f}h. Processando por timeout...")
                 threading.Thread(target=processar_obs2_chat, args=(ticket_id, item), daemon=True).start()
             else:
-                print(f"[admin] Ticket {ticket_id} — chat ainda aberto ({horas_na_fila:.1f}h na fila). Aguardando...")
+                horas_limite = get_horas_chat()
+                print(f"[admin] Ticket {ticket_id} — chat ainda aberto ({horas_na_fila:.1f}h na fila · limite: {horas_limite}h). Aguardando...")
         except Exception as e:
             print(f"[admin] Erro ao processar item da fila: {e}")
     ultima_varredura_chat = time.time()
@@ -287,7 +325,7 @@ def reprocessar_tickets_novos():
         if e_chat:
             dados_obs1 = json.dumps({"ticket_id": ticket_id, "e_chat": True})
             r.lpush(FILA_OBS1, dados_obs1)
-            dados_chat = json.dumps({"ticket_id": ticket_id, "timestamp": time.time()})
+            dados_chat = json.dumps({"ticket_id": ticket_id, "timestamp": time.time(), "createdate": props.get("createdate", None)})
             r.lpush(FILA_CHAT, dados_chat)
         else:
             dados_obs1 = json.dumps({"ticket_id": ticket_id, "e_chat": False})
@@ -455,6 +493,37 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(resposta)
+        elif self.path == "/config-horas-chat":
+            horas_atual = get_horas_chat()
+            resultado = {
+                "horas_configuradas": horas_atual,
+                "padrao": HORAS_CHAT_PADRAO,
+                "uso": "Para alterar: /config-horas-chat?horas=4 (valores aceitos: 1, 2, 4, 8, 12, 24)"
+            }
+            resposta = json.dumps(resultado, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(resposta)
+        elif self.path.startswith("/config-horas-chat?"):
+            from urllib.parse import urlparse, parse_qs
+            params = parse_qs(urlparse(self.path).query)
+            horas_str = params.get("horas", [None])[0]
+            valores_aceitos = [1, 2, 4, 8, 12, 24]
+            try:
+                horas = float(horas_str)
+                if horas not in valores_aceitos:
+                    raise ValueError()
+                r.set(REDIS_KEY_HORAS_CHAT, str(horas))
+                resultado = {"status": "ok", "horas_configuradas": horas, "mensagem": f"Chats com mais de {horas}h serão considerados encerrados."}
+                print(f"[admin] Limite de horas do chat alterado para {horas}h.")
+            except Exception:
+                resultado = {"status": "erro", "mensagem": f"Valor inválido. Use: {valores_aceitos}"}
+            resposta = json.dumps(resultado, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(resposta)
         elif self.path == "/varrer-chats":
             threading.Thread(target=varredura_manual_chats, daemon=True).start()
             self.send_response(200)
@@ -494,7 +563,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
                     print(f"[webhook] Ticket {ticket_id} é de CHAT. Adicionando às filas de obs e chat...")
                     dados_obs1 = json.dumps({"ticket_id": ticket_id, "e_chat": True})
                     r.lpush(FILA_OBS1, dados_obs1)
-                    dados_chat = json.dumps({"ticket_id": ticket_id, "timestamp": time.time()})
+                    dados_chat = json.dumps({"ticket_id": ticket_id, "timestamp": time.time(), "createdate": props.get("createdate", None)})
                     r.lpush(FILA_CHAT, dados_chat)
                     print(f"[webhook] Ticket {ticket_id} — Categorização + Obs1 + fila de chat.")
                 else:
