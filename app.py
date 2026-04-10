@@ -221,7 +221,7 @@ def worker_chat():
 
 def processar_obs2_chat(ticket_id, item_redis):
     try:
-        sucesso = processar_obs2(ticket_id)
+        sucesso = processar_obs2(ticket_id, forcar=True)
         r.set(f"obs2_concluida:{ticket_id}", "1", ex=86400)
         r.lrem(FILA_CHAT, 0, item_redis)
         print(f"[worker_chat] Obs2 chat {'✅' if sucesso else '❌'} para ticket {ticket_id}. Removido da fila.")
