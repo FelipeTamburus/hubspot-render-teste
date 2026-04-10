@@ -159,17 +159,27 @@ def chat_tem_fim_expediente(thread_id):
     Verifica se o bot enviou a mensagem de encerramento de expediente na thread.
     Essa mensagem indica que o cliente não será atendido naquele dia,
     portanto o chat deve ser tratado como encerrado mesmo com status OPEN.
+    Busca o texto em múltiplos campos para garantir a detecção.
     """
     TEXTO_FIM_EXPEDIENTE = "Nosso horário de atendimento se encerrou"
     try:
         mensagens = buscar_mensagens_chat(thread_id)
+        print(f"[hubspot] Verificando fim de expediente em {len(mensagens)} mensagens da thread {thread_id}.")
         for msg in mensagens:
-            remetente = msg.get("senders", [{}])[0]
-            nome = remetente.get("name", "")
-            texto = msg.get("text", "")
-            if nome == "Agente do Suporte" and TEXTO_FIM_EXPEDIENTE in texto:
-                print(f"[hubspot] Mensagem de fim de expediente detectada na thread {thread_id}.")
+            # Busca o texto em todos os campos possíveis
+            texto = (
+                msg.get("text", "") or
+                msg.get("body", "") or
+                msg.get("richText", "") or
+                msg.get("truncatedPreviewText", "") or
+                ""
+            )
+            if TEXTO_FIM_EXPEDIENTE in texto:
+                remetente = msg.get("senders", [{}])[0]
+                nome = remetente.get("name", "desconhecido")
+                print(f"[hubspot] Mensagem de fim de expediente detectada na thread {thread_id} (remetente: {nome}).")
                 return True
+        print(f"[hubspot] Mensagem de fim de expediente NÃO encontrada na thread {thread_id}.")
         return False
     except Exception as e:
         print(f"[hubspot] Erro ao verificar fim de expediente na thread {thread_id}: {e}")
