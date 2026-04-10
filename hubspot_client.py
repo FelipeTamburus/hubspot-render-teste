@@ -159,7 +159,7 @@ def chat_tem_fim_expediente(thread_id):
     Verifica se o bot enviou a mensagem de encerramento de expediente na thread.
     O texto real está no campo richText em formato HTML — as tags são removidas antes de comparar.
     """
-    TEXTO_FIM_EXPEDIENTE = "Nosso horário de atendimento se encerrou"
+    TEXTO_FIM_EXPEDIENTE = "Fora do horário de atendimento"
     import re, html as html_module
 
     def strip_html(texto):
