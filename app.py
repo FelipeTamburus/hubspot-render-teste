@@ -89,8 +89,7 @@ def worker_categorizacao():
                 _, ticket_id = resultado
                 ticket_id = ticket_id.decode("utf-8")
                 print(f"[worker_categ] Categorizando ticket {ticket_id}...")
-                sucesso = processar_categorizacao(ticket_id)
-                print(f"[worker_categ] Categorização {'✅' if sucesso else '❌'} para ticket {ticket_id}.")
+                threading.Thread(target=processar_categorizacao, args=(ticket_id,), daemon=True).start()
         except Exception as e:
             print(f"[worker_categ] Erro: {e}")
             time.sleep(5)
