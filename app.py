@@ -225,6 +225,9 @@ def processar_obs2_chat(ticket_id, item_redis):
         r.set(f"obs2_concluida:{ticket_id}", "1", ex=86400)
         r.lrem(FILA_CHAT, 0, item_redis)
         print(f"[worker_chat] Obs2 chat {'✅' if sucesso else '❌'} para ticket {ticket_id}. Removido da fila.")
+        # Dispara categorização forçada — não aguarda chat fechar
+        threading.Thread(target=processar_categorizacao, args=(ticket_id, True), daemon=True).start()
+        print(f"[worker_chat] Categorização forçada disparada para ticket {ticket_id}.")
     except Exception as e:
         print(f"[worker_chat] Erro ao processar Obs2 do ticket {ticket_id}: {e}")
 
