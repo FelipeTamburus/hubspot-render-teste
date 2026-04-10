@@ -459,6 +459,54 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(resposta)
+        elif self.path.startswith("/debug-ticket/"):
+            ticket_id = self.path.split("/debug-ticket/")[-1].strip()
+            from hubspot_client import buscar_thread_conversa, buscar_mensagens_chat
+            thread_id = buscar_thread_conversa(ticket_id)
+            if not thread_id:
+                resposta = json.dumps({"erro": f"Nenhuma thread encontrada para ticket {ticket_id}"}).encode("utf-8")
+            else:
+                mensagens = buscar_mensagens_chat(thread_id)
+                resultado = {"thread_id": thread_id, "total_mensagens": len(mensagens), "mensagens": []}
+                for i, msg in enumerate(mensagens):
+                    resultado["mensagens"].append({
+                        "indice": i,
+                        "type": msg.get("type", ""),
+                        "text": (msg.get("text", "") or "")[:300],
+                        "body": (msg.get("body", "") or "")[:300],
+                        "richText": (msg.get("richText", "") or "")[:300],
+                        "truncatedPreviewText": (msg.get("truncatedPreviewText", "") or "")[:300],
+                        "sender_name": msg.get("senders", [{}])[0].get("name", ""),
+                        "createdBy": msg.get("createdBy", ""),
+                        "keys": list(msg.keys())
+                    })
+                resposta = json.dumps(resultado, ensure_ascii=False, indent=2).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(resposta)
+        elif self.path.startswith("/debug-thread/"):
+            thread_id = self.path.split("/debug-thread/")[-1].strip()
+            from hubspot_client import buscar_mensagens_chat
+            mensagens = buscar_mensagens_chat(thread_id)
+            resultado = []
+            for i, msg in enumerate(mensagens):
+                resultado.append({
+                    "indice": i,
+                    "type": msg.get("type", ""),
+                    "text": msg.get("text", "")[:200],
+                    "body": msg.get("body", "")[:200],
+                    "richText": msg.get("richText", "")[:200],
+                    "truncatedPreviewText": msg.get("truncatedPreviewText", "")[:200],
+                    "sender_name": msg.get("senders", [{}])[0].get("name", ""),
+                    "createdBy": msg.get("createdBy", ""),
+                    "keys": list(msg.keys())
+                })
+            resposta = json.dumps(resultado, ensure_ascii=False, indent=2).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(resposta)
         elif self.path == "/reprocessar-novos":
             threading.Thread(target=reprocessar_tickets_novos, daemon=True).start()
             self.send_response(200)
