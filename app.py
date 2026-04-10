@@ -3,7 +3,6 @@ import json
 import os
 import threading
 import time
-import datetime
 import requests
 import redis
 from obs1_contexto_empresa import processar_obs1
@@ -66,55 +65,13 @@ def buscar_thread_chat(ticket_id):
 
 
 def chat_esta_encerrado(thread_id):
-    """
-    Verifica se o chat está encerrado. Considera encerrado se:
-    1. Status da thread é ENDED, CLOSED ou ARCHIVED
-    2. OU a última mensagem foi enviada há mais de 5 horas (chat inativo)
-    """
-    HORAS_INATIVIDADE = 5
+    """Verifica se o chat está encerrado."""
     url = f"https://api.hubapi.com/conversations/v3/conversations/threads/{thread_id}"
     try:
         response = requests.get(url, headers=HEADERS, timeout=10)
         response.raise_for_status()
         status = response.json().get("status", "")
-
-        # 1. Encerrado pelo status
-        if status in ["ENDED", "CLOSED", "ARCHIVED"]:
-            return True
-
-        # 2. Chat OPEN — verifica inatividade pela última mensagem
-        msgs_url = f"https://api.hubapi.com/conversations/v3/conversations/threads/{thread_id}/messages"
-        msgs_response = requests.get(msgs_url, headers=HEADERS, timeout=10)
-        msgs_response.raise_for_status()
-        mensagens = msgs_response.json().get("results", [])
-
-        if not mensagens:
-            return False
-
-        ultimo_timestamp = None
-        for msg in mensagens:
-            created_at = msg.get("createdAt", "")
-            if created_at:
-                try:
-                    ts = datetime.datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-                    if ultimo_timestamp is None or ts > ultimo_timestamp:
-                        ultimo_timestamp = ts
-                except Exception:
-                    pass
-
-        if ultimo_timestamp is None:
-            return False
-
-        agora = datetime.datetime.now(datetime.timezone.utc)
-        horas_inativo = (agora - ultimo_timestamp).total_seconds() / 3600
-        print(f"[chat] Thread {thread_id} — última mensagem: {ultimo_timestamp.strftime('%d/%m %H:%M')} — inativa há {horas_inativo:.1f}h")
-
-        if horas_inativo >= HORAS_INATIVIDADE:
-            print(f"[chat] Thread {thread_id} inativa há {horas_inativo:.1f}h. Processando como encerrada.")
-            return True
-
-        return False
-
+        return status in ["ENDED", "CLOSED", "ARCHIVED"]
     except Exception as e:
         print(f"[chat] Erro ao verificar status da thread {thread_id}: {e}")
         return False
