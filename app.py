@@ -237,6 +237,55 @@ def verificar_e_disparar_obs3(ticket_id, requer_obs2=True):
 
 # --- REPROCESSAMENTO MANUAL ---
 
+def varredura_manual_chats():
+    """
+    Força a varredura imediata da fila de chats.
+    Mesma lógica do worker_chat mas disparada manualmente via endpoint /varrer-chats.
+    """
+    global ultima_varredura_chat
+    print("[admin] Varredura manual de chats iniciada...")
+    tickets_chat = r.lrange(FILA_CHAT, 0, -1)
+    total = len(tickets_chat)
+    print(f"[admin] {total} ticket(s) na fila de chat.")
+
+    if not tickets_chat:
+        print("[admin] Nenhum ticket na fila de chat.")
+        return
+
+    for item in tickets_chat:
+        try:
+            dados = json.loads(item.decode("utf-8"))
+            ticket_id = dados["ticket_id"]
+            timestamp_entrada = dados["timestamp"]
+            horas_na_fila = (time.time() - timestamp_entrada) / 3600
+
+            if r.exists(f"obs2_concluida:{ticket_id}"):
+                print(f"[admin] Ticket {ticket_id} já processado. Removendo da fila.")
+                r.lrem(FILA_CHAT, 0, item)
+                continue
+
+            thread_id = buscar_thread_chat(ticket_id)
+            encerrado = False
+            if thread_id:
+                encerrado = chat_esta_encerrado(thread_id)
+
+            if encerrado:
+                print(f"[admin] Chat do ticket {ticket_id} encerrado. Processando Obs 2...")
+                threading.Thread(target=processar_obs2_chat, args=(ticket_id, item), daemon=True).start()
+            elif horas_na_fila >= CHAT_TIMEOUT_HORAS:
+                print(f"[admin] Ticket {ticket_id} na fila há {horas_na_fila:.1f}h. Processando por timeout...")
+                threading.Thread(target=processar_obs2_chat, args=(ticket_id, item), daemon=True).start()
+            else:
+                print(f"[admin] Ticket {ticket_id} — chat ainda aberto ({horas_na_fila:.1f}h na fila). Aguardando...")
+
+        except Exception as e:
+            print(f"[admin] Erro ao processar item da fila: {e}")
+
+    ultima_varredura_chat = time.time()
+    print("[admin] ✅ Varredura manual concluída.")
+
+
+
 def buscar_tickets_estagio_novo():
     """Busca todos os tickets no estágio Novo da pipeline de suporte via API HubSpot."""
     url = "https://api.hubapi.com/crm/v3/objects/tickets/search"
@@ -417,6 +466,13 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b'{"status": "reprocessamento iniciado em background"}')
             print("[admin] Reprocessamento de tickets novos iniciado via endpoint.")
+        elif self.path == "/varrer-chats":
+            threading.Thread(target=varredura_manual_chats, daemon=True).start()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status": "varredura de chats iniciada em background"}')
+            print("[admin] Varredura manual de chats iniciada via endpoint.")
         else:
             self.send_response(404)
             self.end_headers()
