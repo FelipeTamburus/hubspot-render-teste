@@ -155,13 +155,51 @@ def buscar_mensagens_chat(thread_id):
 
 
 def chat_esta_encerrado(thread_id):
-    """Verifica se o chat de uma thread está encerrado."""
+    """
+    Verifica se o chat está encerrado. Considera encerrado se:
+    1. Status da thread é ENDED, CLOSED ou ARCHIVED
+    2. OU a última mensagem da thread foi enviada há mais de 5 horas (chat inativo)
+    """
+    HORAS_INATIVIDADE = 5
     url = f"{BASE_URL}/conversations/v3/conversations/threads/{thread_id}"
     try:
         response = requests.get(url, headers=HEADERS, timeout=15)
         response.raise_for_status()
         status = response.json().get("status", "")
-        return status in ["ENDED", "CLOSED", "ARCHIVED"]
+
+        # 1. Encerrado pelo status
+        if status in ["ENDED", "CLOSED", "ARCHIVED"]:
+            return True
+
+        # 2. Chat OPEN — verifica inatividade pela última mensagem
+        mensagens = buscar_mensagens_chat(thread_id)
+        if not mensagens:
+            return False
+
+        # Busca o timestamp mais recente entre todas as mensagens
+        ultimo_timestamp = None
+        for msg in mensagens:
+            created_at = msg.get("createdAt", "")
+            if created_at:
+                try:
+                    ts = datetime.datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                    if ultimo_timestamp is None or ts > ultimo_timestamp:
+                        ultimo_timestamp = ts
+                except Exception:
+                    pass
+
+        if ultimo_timestamp is None:
+            return False
+
+        agora = datetime.datetime.now(datetime.timezone.utc)
+        horas_inativo = (agora - ultimo_timestamp).total_seconds() / 3600
+
+        if horas_inativo >= HORAS_INATIVIDADE:
+            print(f"[hubspot] Thread {thread_id} inativa há {horas_inativo:.1f}h. Processando como encerrada.")
+            return True
+
+        return False
+
     except requests.exceptions.RequestException as e:
         print(f"[hubspot] Erro ao verificar status do chat {thread_id}: {e}")
         return False
