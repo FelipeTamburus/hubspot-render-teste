@@ -9,6 +9,7 @@ from obs1_contexto_empresa import processar_obs1
 from obs2_dor_ticket import processar_obs2
 from obs3_similares import processar_obs3
 from categorizacao import processar_categorizacao
+from tickets_antigos import categorizar_antigos, buscar_tickets_antigos, worker_tickets_antigos
 
 PIPELINE_SUPORTE_ID = "0"
 STAGE_NOVO = "1"
@@ -435,6 +436,26 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b'{"status": "reprocessamento iniciado em background"}')
             print("[admin] Reprocessamento de tickets novos iniciado via endpoint.")
+        elif self.path == "/categorizar-antigos":
+            threading.Thread(target=categorizar_antigos, args=(r,), daemon=True).start()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status": "categorizacao de tickets antigos iniciada em background"}')
+            print("[admin] Categorização de tickets antigos iniciada via endpoint.")
+        elif self.path == "/status-antigos":
+            import json as json_mod
+            antigos = buscar_tickets_antigos()
+            resultado = {
+                "total": len(antigos),
+                "limite_horas": 8,
+                "tickets": antigos
+            }
+            resposta = json_mod.dumps(resultado, ensure_ascii=False, indent=2).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(resposta)
         elif self.path == "/varrer-chats":
             threading.Thread(target=varredura_manual_chats, daemon=True).start()
             self.send_response(200)
@@ -496,10 +517,12 @@ if __name__ == "__main__":
     threading.Thread(target=worker_obs1, daemon=True).start()
     threading.Thread(target=worker_obs2, daemon=True).start()
     threading.Thread(target=worker_chat, daemon=True).start()
+    threading.Thread(target=worker_tickets_antigos, args=(r,), daemon=True).start()
 
     porta = int(os.environ.get("PORT", 8000))
     print(f"[servidor] Rodando na porta {porta}...")
     print(f"[servidor] Monitorando pipeline {PIPELINE_SUPORTE_ID}, estágio Novo (id={STAGE_NOVO}).")
     print(f"[servidor] Health check disponível em /health")
     print(f"[servidor] Rotina de chats: varredura a cada 30min, timeout de {CHAT_TIMEOUT_HORAS}h.")
+    print(f"[servidor] Rotina de tickets antigos: varredura a cada 1h (limite 8h).")
     HTTPServer(("0.0.0.0", porta), WebhookHandler).serve_forever()
