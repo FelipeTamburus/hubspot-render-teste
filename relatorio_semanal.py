@@ -1,11 +1,7 @@
 import os
 import json
-import time
 import datetime
-import smtplib
 import requests
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from contexto_ai_client import chamar_contexto_ai
 
 # --- CONFIG ---
@@ -343,21 +339,39 @@ def montar_html(metricas, resumo, periodo):
 # --- ENVIO ---
 
 def enviar_email(html, periodo):
-    """Envia o e-mail via SMTP com SSL."""
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"📊 Relatório Semanal de Suporte — {periodo}"
-    msg["From"] = EMAIL_USER
-    msg["To"] = ", ".join(DESTINATARIOS)
-    msg.attach(MIMEText(html, "html", "utf-8"))
+    """Envia o e-mail via SendGrid API."""
+    api_key = os.environ.get("SENDGRID_API_KEY")
+    if not api_key:
+        print("[relatorio] ❌ SENDGRID_API_KEY não configurada.")
+        return False
+
+    payload = {
+        "personalizations": [{
+            "to": [{"email": e} for e in DESTINATARIOS]
+        }],
+        "from": {"email": EMAIL_USER, "name": "EasyJur Suporte"},
+        "subject": f"📊 Relatório Semanal de Suporte — {periodo}",
+        "content": [{"type": "text/html", "value": html}]
+    }
 
     try:
-        with smtplib.SMTP_SSL(EMAIL_HOST, 465) as server:
-            server.login(EMAIL_USER, EMAIL_PASSWORD)
-            server.sendmail(EMAIL_USER, DESTINATARIOS, msg.as_string())
-        print(f"[relatorio] ✅ E-mail enviado para {DESTINATARIOS}")
-        return True
+        response = requests.post(
+            "https://api.sendgrid.com/v3/mail/send",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            json=payload,
+            timeout=15
+        )
+        if response.status_code in [200, 202]:
+            print(f"[relatorio] ✅ E-mail enviado via SendGrid para {DESTINATARIOS}")
+            return True
+        else:
+            print(f"[relatorio] ❌ SendGrid retornou {response.status_code}: {response.text}")
+            return False
     except Exception as e:
-        print(f"[relatorio] ❌ Erro ao enviar e-mail: {e}")
+        print(f"[relatorio] ❌ Erro ao enviar via SendGrid: {e}")
         return False
 
 
