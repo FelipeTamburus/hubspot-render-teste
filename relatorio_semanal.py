@@ -49,7 +49,8 @@ def buscar_tickets_semana():
                 "subject", "hs_pipeline_stage", "hs_object_source",
                 "createdate", "hs_lastmodifieddate",
                 "modulo_assunto", "classificacao_do_atendimento",
-                "plano_contratado_easyjur", "id_empresa_ej"
+                "plano_contratado_easyjur", "id_empresa_ej",
+                "servico"
             ],
             "sorts": [{"propertyName": "createdate", "direction": "DESCENDING"}],
             "limit": 100
@@ -120,9 +121,11 @@ def analisar_tickets(tickets):
     estagios = {}
     mapa_estagios = {
         "1": "Novo",
-        "1338631792": "Alta Prioridade",
-        "1338631793": "Média Prioridade",
-        "1338631794": "Baixa Prioridade"
+        "1338631792": "🔴 Atendimento — P. Alta",
+        "1338631793": "🟡 Atendimento — P. Média",
+        "1338631794": "🟢 Atendimento — P. Baixa",
+        "3": "🟣 Retorno — Pós Atendimento",
+        "164386119": "❇️ Resolvido"
     }
     for t in tickets:
         stage = t.get("properties", {}).get("hs_pipeline_stage", "")
@@ -135,6 +138,13 @@ def analisar_tickets(tickets):
         modulo = t.get("properties", {}).get("modulo_assunto", "") or "Não identificado"
         modulos[modulo] = modulos.get(modulo, 0) + 1
     modulos_ordenados = sorted(modulos.items(), key=lambda x: x[1], reverse=True)
+
+    # Tipo de serviço
+    servicos = {}
+    for t in tickets:
+        servico = t.get("properties", {}).get("servico", "") or "Não identificado"
+        servicos[servico] = servicos.get(servico, 0) + 1
+    servicos_ordenados = sorted(servicos.items(), key=lambda x: x[1], reverse=True)[:6]
 
     # Planos
     planos = {}
@@ -155,6 +165,7 @@ def analisar_tickets(tickets):
         "canais": canais,
         "estagios": estagios,
         "modulos": modulos_ordenados[:6],
+        "servicos": servicos_ordenados,
         "planos": planos_ordenados[:5],
         "top_empresas": top_empresas
     }
@@ -175,6 +186,7 @@ DADOS DA SEMANA:
 - Por canal: {json.dumps(metricas['canais'], ensure_ascii=False)}
 - Por estágio atual: {json.dumps(metricas['estagios'], ensure_ascii=False)}
 - Módulos mais acionados: {json.dumps(metricas['modulos'], ensure_ascii=False)}
+- Tipos de serviço mais solicitados: {json.dumps(metricas['servicos'], ensure_ascii=False)}
 - Por plano: {json.dumps(metricas['planos'], ensure_ascii=False)}
 - Top 5 empresas por volume: {json.dumps(metricas['top_empresas'], ensure_ascii=False)}
 
@@ -216,7 +228,14 @@ def montar_html(metricas, resumo, periodo):
 
     # Estágios
     estagios_html = ""
-    cores_est = {"Alta Prioridade": "#E5293F", "Média Prioridade": "#F59E0B", "Baixa Prioridade": "#10B981", "Novo": "#3B82F6"}
+    cores_est = {
+        "🔴 Atendimento — P. Alta": "#E5293F",
+        "🟡 Atendimento — P. Média": "#F59E0B",
+        "🟢 Atendimento — P. Baixa": "#10B981",
+        "🟣 Retorno — Pós Atendimento": "#8B5CF6",
+        "❇️ Resolvido": "#06B6D4",
+        "Novo": "#3B82F6"
+    }
     for estagio, qtd in sorted(metricas["estagios"].items(), key=lambda x: x[1], reverse=True):
         cor = cores_est.get(estagio, "#ACBAC2")
         pct = round((qtd / metricas["total"]) * 100) if metricas["total"] > 0 else 0
@@ -229,6 +248,18 @@ def montar_html(metricas, resumo, periodo):
               <div style="background:{cor};width:{pct}%;height:6px;border-radius:4px;"></div>
             </div>
           </td>
+        </tr>"""
+
+    # Tipo de serviço
+    servicos_html = ""
+    cores_serv = ["#E5293F", "#F59E0B", "#3B82F6", "#10B981", "#8B5CF6", "#EC4899"]
+    for i, (serv, qtd) in enumerate(metricas["servicos"]):
+        cor = cores_serv[i % len(cores_serv)]
+        pct = round((qtd / metricas["total"]) * 100) if metricas["total"] > 0 else 0
+        servicos_html += f"""
+        <tr>
+          <td style="padding:8px 0;font-size:13px;color:#191919;font-weight:500;">{serv}</td>
+          <td style="padding:8px 0;text-align:right;font-size:13px;font-weight:700;color:{cor};">{qtd} <span style="color:#ACBAC2;font-weight:400;">({pct}%)</span></td>
         </tr>"""
 
     # Resumo em parágrafos
@@ -309,6 +340,16 @@ def montar_html(metricas, resumo, periodo):
       <p style="font-size:11px;font-weight:700;color:#ACBAC2;text-transform:uppercase;letter-spacing:0.08em;margin:0 0 8px;">Módulos mais acionados</p>
       <table width="100%" cellpadding="0" cellspacing="0">
         {modulos_html}
+      </table>
+    </div>
+  </td></tr>
+
+  <!-- TIPO DE SERVIÇO -->
+  <tr><td style="background:#fff;padding:0 32px 24px;border-left:1px solid #E5E7EB;border-right:1px solid #E5E7EB;">
+    <div style="border-top:1px solid #E5E7EB;padding-top:24px;">
+      <p style="font-size:11px;font-weight:700;color:#ACBAC2;text-transform:uppercase;letter-spacing:0.08em;margin:0 0 8px;">Tipos de serviço mais solicitados</p>
+      <table width="100%" cellpadding="0" cellspacing="0">
+        {servicos_html}
       </table>
     </div>
   </td></tr>
