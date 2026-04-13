@@ -11,7 +11,9 @@ from hubspot_client import (
     buscar_plano_empresa,
     buscar_plano_do_ticket,
     buscar_todos_tickets_empresa_30_dias,
-    adicionar_observacao
+    adicionar_observacao,
+    obs_ja_criada,
+    marcar_obs_criada
 )
 
 HUBSPOT_PORTAL_ID = "44225969"
@@ -177,6 +179,11 @@ def processar_obs1(ticket_id):
     print(f"[obs1] Aguardando 60 segundos...")
     time.sleep(60)
 
+    # Verifica se já foi criada para evitar duplicatas
+    if obs_ja_criada(ticket_id, 1):
+        print(f"[obs1] Obs 1 já criada para ticket {ticket_id}. Pulando.")
+        return True
+
     ticket = buscar_ticket(ticket_id)
     if not ticket:
         print(f"[obs1] Ticket {ticket_id} não encontrado. Abortando.")
@@ -212,6 +219,7 @@ def processar_obs1(ticket_id):
     sucesso = adicionar_observacao(ticket_id, "Observação 1 — Contexto da Empresa", conteudo_html)
 
     if sucesso:
+        marcar_obs_criada(ticket_id, 1)
         print(f"[obs1] ✅ Observação 1 adicionada ao ticket {ticket_id}.")
     else:
         print(f"[obs1] ❌ Falha ao adicionar Observação 1 ao ticket {ticket_id}.")
