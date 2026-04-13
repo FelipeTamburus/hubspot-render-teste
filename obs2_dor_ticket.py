@@ -11,6 +11,8 @@ from hubspot_client import (
     buscar_emails_ticket,
     buscar_todos_tickets_empresa_30_dias,
     adicionar_observacao,
+    obs_ja_criada,
+    marcar_obs_criada,
     REMETENTES_BOT
 )
 
@@ -136,6 +138,11 @@ def processar_obs2(ticket_id, forcar=False):
     print(f"[obs2] Aguardando 120 segundos...")
     time.sleep(120)
 
+    # Verifica se já foi criada para evitar duplicatas
+    if obs_ja_criada(ticket_id, 2):
+        print(f"[obs2] Obs 2 já criada para ticket {ticket_id}. Pulando.")
+        return True
+
     ticket = buscar_ticket(ticket_id)
     if not ticket:
         print(f"[obs2] Ticket {ticket_id} não encontrado. Abortando.")
@@ -187,6 +194,7 @@ def processar_obs2(ticket_id, forcar=False):
     sucesso = adicionar_observacao(ticket_id, "Observação 2 — Contexto e Dor do Ticket", conteudo_html)
 
     if sucesso:
+        marcar_obs_criada(ticket_id, 2)
         print(f"[obs2] ✅ Observação 2 adicionada ao ticket {ticket_id}.")
     else:
         print(f"[obs2] ❌ Falha ao adicionar Observação 2 ao ticket {ticket_id}.")
