@@ -190,7 +190,7 @@ Gere:
 Responda em texto corrido, sem markdown, sem asteriscos, sem bullets. Use parágrafos separados por quebra de linha dupla para cada seção."""
 
     try:
-        resposta = chamar_contexto_ai(prompt, max_tokens=600)
+        resposta = chamar_contexto_ai(prompt, task_name="relatorio_semanal")
         return resposta.strip() if resposta else "Resumo não disponível."
     except Exception as e:
         print(f"[relatorio] Erro ao chamar Contexto.AI: {e}")
