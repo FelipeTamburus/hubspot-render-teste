@@ -343,7 +343,7 @@ def montar_html(metricas, resumo, periodo):
 # --- ENVIO ---
 
 def enviar_email(html, periodo):
-    """Envia o e-mail via SMTP."""
+    """Envia o e-mail via SMTP com SSL."""
     msg = MIMEMultipart("alternative")
     msg["Subject"] = f"📊 Relatório Semanal de Suporte — {periodo}"
     msg["From"] = EMAIL_USER
@@ -351,9 +351,7 @@ def enviar_email(html, periodo):
     msg.attach(MIMEText(html, "html", "utf-8"))
 
     try:
-        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
-            server.ehlo()
-            server.starttls()
+        with smtplib.SMTP_SSL(EMAIL_HOST, 465) as server:
             server.login(EMAIL_USER, EMAIL_PASSWORD)
             server.sendmail(EMAIL_USER, DESTINATARIOS, msg.as_string())
         print(f"[relatorio] ✅ E-mail enviado para {DESTINATARIOS}")
