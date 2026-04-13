@@ -10,7 +10,7 @@ from obs1_contexto_empresa import processar_obs1
 from obs2_dor_ticket import processar_obs2
 from obs3_similares import processar_obs3
 from categorizacao import processar_categorizacao
-from tickets_antigos import categorizar_antigos, buscar_tickets_antigos, worker_tickets_antigos
+from tickets_antigos import categorizar_antigos, buscar_tickets_antigos, worker_tickets_antigos, sinalizar_chat_ao_vivo
 
 PIPELINE_SUPORTE_ID = "0"
 STAGE_NOVO = "1"
@@ -225,6 +225,8 @@ def processar_obs2_chat(ticket_id, item_redis):
         r.set(f"obs2_concluida:{ticket_id}", "1", ex=86400)
         r.lrem(FILA_CHAT, 0, item_redis)
         print(f"[worker_chat] Obs2 chat {'✅' if sucesso else '❌'} para ticket {ticket_id}. Removido da fila.")
+        # Move para P. Alta e define responsável (chat processado por timeout)
+        sinalizar_chat_ao_vivo(ticket_id)
         # Dispara categorização forçada — não aguarda chat fechar
         threading.Thread(target=processar_categorizacao, args=(ticket_id, True), daemon=True).start()
         print(f"[worker_chat] Categorização forçada disparada para ticket {ticket_id}.")
