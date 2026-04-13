@@ -365,3 +365,37 @@ def buscar_plano_do_ticket(ticket_id):
     except requests.exceptions.RequestException as e:
         print(f"[hubspot] Erro ao buscar plano do ticket {ticket_id}: {e}")
         return None
+
+
+# --- CONTROLE DE OBSERVAÇÕES ---
+
+def obs_ja_criada(ticket_id, numero):
+    """
+    Verifica se uma observação já foi criada consultando a propriedade do ticket.
+    numero: 1, 2 ou 3
+    Retorna True se a propriedade obs{numero} == '1'
+    """
+    prop = f"obs{numero}"
+    url = f"{BASE_URL}/crm/v3/objects/tickets/{ticket_id}?properties={prop}"
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=10)
+        response.raise_for_status()
+        valor = response.json().get("properties", {}).get(prop, "")
+        return str(valor).strip() == "1"
+    except Exception as e:
+        print(f"[hubspot] Erro ao verificar obs{numero} do ticket {ticket_id}: {e}")
+        return False
+
+
+def marcar_obs_criada(ticket_id, numero):
+    """
+    Marca a propriedade obs{numero} = '1' no ticket para evitar duplicatas.
+    numero: 1, 2 ou 3
+    """
+    prop = f"obs{numero}"
+    url = f"{BASE_URL}/crm/v3/objects/tickets/{ticket_id}"
+    try:
+        response = requests.patch(url, headers=HEADERS, json={"properties": {prop: "1"}}, timeout=10)
+        response.raise_for_status()
+    except Exception as e:
+        print(f"[hubspot] Erro ao marcar obs{numero} do ticket {ticket_id}: {e}")
