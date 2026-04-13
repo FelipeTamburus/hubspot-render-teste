@@ -14,6 +14,8 @@ from hubspot_client import (
     buscar_ultima_mensagem_analista,
     buscar_mensagens_chat,
     adicionar_observacao,
+    obs_ja_criada,
+    marcar_obs_criada,
     STAGE_RESOLVIDO,
     REMETENTES_BOT
 )
@@ -255,6 +257,11 @@ def gerar_html_obs3(similares_empresa, similares_globais, demanda_atual, company
 def processar_obs3(ticket_id):
     print(f"[obs3] Iniciando para ticket {ticket_id}...")
 
+    # Verifica se já foi criada para evitar duplicatas
+    if obs_ja_criada(ticket_id, 3):
+        print(f"[obs3] Obs 3 já criada para ticket {ticket_id}. Pulando.")
+        return True
+
     ticket = buscar_ticket(ticket_id)
     if not ticket:
         print(f"[obs3] Ticket {ticket_id} não encontrado. Abortando.")
@@ -300,6 +307,7 @@ def processar_obs3(ticket_id):
     sucesso = adicionar_observacao(ticket_id, "Observação 3 — Tickets Similares e Resolução", conteudo_html)
 
     if sucesso:
+        marcar_obs_criada(ticket_id, 3)
         print(f"[obs3] ✅ Observação 3 adicionada ao ticket {ticket_id}.")
     else:
         print(f"[obs3] ❌ Falha ao adicionar Observação 3 ao ticket {ticket_id}.")
