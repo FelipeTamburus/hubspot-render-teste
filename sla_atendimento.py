@@ -24,46 +24,60 @@ SLA_URGENTE  = 30   # até 30h úteis (3 dias)
 
 def calcular_horas_comerciais(criado_em_utc, agora_utc):
     """
-    Calcula quantas horas comerciais (09h-17h, dias úteis seg-sex)
-    se passaram entre criado_em_utc e agora_utc.
+    Calcula quantas horas úteis (08h-18h, seg-sex) se passaram
+    entre criado_em_utc e agora_utc, preservando o horário exato de abertura.
+
+    Exemplo:
+      Aberto: quinta 09/04 às 10:27
+      Agora:  segunda 20/04 às 10:27
+      Resultado: 70h úteis (7 dias úteis × 10h)
     """
-    # Converte para horário de Brasília
     criado = criado_em_utc.astimezone(FUSO_BRASILIA)
     agora = agora_utc.astimezone(FUSO_BRASILIA)
 
-    total_minutos = 0
+    if agora <= criado:
+        return 0.0
+
+    total_minutos = 0.0
     cursor = criado
 
     while cursor < agora:
-        # Ignora fins de semana
+        # Pula fins de semana
         if cursor.weekday() >= 5:
-            cursor += datetime.timedelta(days=1)
-            cursor = cursor.replace(hour=HORARIO_INICIO, minute=0, second=0, microsecond=0)
+            # Avança para segunda-feira às 08:00
+            dias_ate_segunda = 7 - cursor.weekday()
+            cursor = (cursor + datetime.timedelta(days=dias_ate_segunda)).replace(
+                hour=HORARIO_INICIO, minute=0, second=0, microsecond=0
+            )
             continue
 
-        # Define início e fim do expediente do dia atual
         inicio_dia = cursor.replace(hour=HORARIO_INICIO, minute=0, second=0, microsecond=0)
         fim_dia = cursor.replace(hour=HORARIO_FIM, minute=0, second=0, microsecond=0)
 
-        # Se criado após o expediente, avança para o próximo dia útil
-        if cursor >= fim_dia:
-            cursor += datetime.timedelta(days=1)
-            cursor = cursor.replace(hour=HORARIO_INICIO, minute=0, second=0, microsecond=0)
-            continue
-
-        # Se criado antes do expediente, começa no início
+        # Se cursor está antes do expediente, avança para o início
         if cursor < inicio_dia:
             cursor = inicio_dia
+            continue
 
-        # Fim do período a contar (menor entre agora e fim do expediente)
+        # Se cursor está após o expediente, avança para o próximo dia útil às 08:00
+        if cursor >= fim_dia:
+            proximo = cursor + datetime.timedelta(days=1)
+            cursor = proximo.replace(hour=HORARIO_INICIO, minute=0, second=0, microsecond=0)
+            continue
+
+        # Cursor está dentro do expediente
+        # Calcula até quando contar neste dia (mínimo entre agora e fim do expediente)
         fim_periodo = min(agora, fim_dia)
+        minutos = (fim_periodo - cursor).total_seconds() / 60
+        total_minutos += minutos
 
-        if fim_periodo > cursor:
-            total_minutos += (fim_periodo - cursor).total_seconds() / 60
+        # Se agora está dentro deste dia, terminou
+        if agora <= fim_dia:
+            break
 
-        # Avança para o próximo dia útil
-        cursor += datetime.timedelta(days=1)
-        cursor = cursor.replace(hour=HORARIO_INICIO, minute=0, second=0, microsecond=0)
+        # Avança para o próximo dia útil às 08:00
+        proximo = cursor + datetime.timedelta(days=1)
+        cursor = proximo.replace(hour=HORARIO_INICIO, minute=0, second=0, microsecond=0)
 
     return total_minutos / 60
 
