@@ -103,6 +103,81 @@ def extrair_conteudo_email(ticket_id):
     return emails_cliente[0].get("properties", {}).get("hs_email_text", "").strip()
 
 
+TITULOS_GENERICOS = [
+    "ticket criado por bot",
+    "ticket criado pelo bot",
+    "sem título",
+    "sem assunto",
+    "atendimento",
+    "suporte",
+    "ajuda",
+    "dúvida",
+    "problema",
+]
+
+
+def titulo_e_generico(subject):
+    """Verifica se o título do ticket é genérico."""
+    if not subject:
+        return True
+    return subject.strip().lower() in TITULOS_GENERICOS
+
+
+def gerar_titulo_personalizado(conteudo_bruto, analise):
+    """Usa o Contexto.AI para gerar um título curto, objetivo e focado no problema."""
+    contexto = ""
+    if analise:
+        contexto = analise.get("dor", "") or analise.get("contexto", "")
+
+    texto_base = contexto or conteudo_bruto or ""
+    if not texto_base:
+        return None
+
+    prompt = f"""Você é um especialista em suporte técnico. Com base na descrição abaixo de um ticket de suporte, crie um título com no máximo 60 caracteres.
+
+Regras obrigatórias:
+- Foco total no PROBLEMA do cliente (o que está errado ou o que ele precisa)
+- Inclua o módulo ou funcionalidade afetada quando identificável
+- Linguagem direta e objetiva, sem rodeios
+- Sem palavras genéricas como "dúvida", "problema", "ajuda", "suporte"
+- Sem aspas, sem pontuação no final, sem explicações adicionais
+- Responda APENAS com o título
+
+Exemplos de títulos bons:
+- Erro na emissão de nota fiscal no módulo financeiro
+- Captura de intimações não está localizando processos
+- CPF não aceito no cadastro de termos monitorados
+- Relatório de honorários com valores incorretos
+
+Descrição do ticket: {texto_base[:600]}"""
+
+    try:
+        titulo = chamar_contexto_ai(prompt, task_name="gerar_titulo_ticket")
+        if titulo:
+            titulo = titulo.strip().strip('"').strip("'")[:60]
+            return titulo
+    except Exception as e:
+        print(f"[obs2] Erro ao gerar título: {e}")
+    return None
+
+
+def atualizar_titulo_ticket(ticket_id, novo_titulo):
+    """Atualiza o subject do ticket no HubSpot."""
+    import requests as req
+    import os
+    ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN_HUBSPOT")
+    url = f"https://api.hubapi.com/crm/v3/objects/tickets/{ticket_id}"
+    headers = {"Authorization": f"Bearer {ACCESS_TOKEN}", "Content-Type": "application/json"}
+    try:
+        response = req.patch(url, headers=headers, json={"properties": {"subject": novo_titulo}}, timeout=10)
+        response.raise_for_status()
+        print(f"[obs2] ✅ Título atualizado para: '{novo_titulo}'")
+        return True
+    except Exception as e:
+        print(f"[obs2] Erro ao atualizar título do ticket {ticket_id}: {e}")
+        return False
+
+
 def gerar_html_obs2(company_ej_id, total_tickets, canal, chat_encerrado, analise):
     html = "<p>🤖 <strong>[IA] ANÁLISE DO TICKET</strong></p><hr>"
 
@@ -196,6 +271,14 @@ def processar_obs2(ticket_id, forcar=False):
     if sucesso:
         marcar_obs_criada(ticket_id, 2)
         print(f"[obs2] ✅ Observação 2 adicionada ao ticket {ticket_id}.")
+
+        # Sempre gera e atualiza o título com base na análise da dor
+        print(f"[obs2] Gerando título personalizado para ticket {ticket_id}...")
+        novo_titulo = gerar_titulo_personalizado(conteudo_bruto, analise)
+        if novo_titulo:
+            atualizar_titulo_ticket(ticket_id, novo_titulo)
+        else:
+            print(f"[obs2] Não foi possível gerar título para ticket {ticket_id}.")
     else:
         print(f"[obs2] ❌ Falha ao adicionar Observação 2 ao ticket {ticket_id}.")
     return sucesso
