@@ -18,8 +18,8 @@ FUSO_BRASILIA = datetime.timezone(datetime.timedelta(hours=-3))
 
 # Faixas de SLA em horas úteis (08h-18h = 10h úteis/dia)
 SLA_NORMAL   = 24   # até 24h úteis (2,4 dias)
-SLA_URGENTE  = 30   # até 30h úteis (3 dias)
-# mais de 70h úteis (7 dias) = sla_estourado
+SLA_URGENTE  = 70   # até 70h úteis (7 dias)
+# mais de 70h úteis = sla_estourado
 
 
 def calcular_horas_comerciais(criado_em_utc, agora_utc):
