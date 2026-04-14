@@ -12,15 +12,14 @@ HEADERS = {
 PIPELINE_SUPORTE_ID = "0"
 COLUNAS_ATENDIMENTO = ["1338631792", "1338631793", "1338631794", "3"]
 
-HORARIO_INICIO = 9   # 09:00
-HORARIO_FIM = 17     # 17:00
+HORARIO_INICIO = 8    # 08:00
+HORARIO_FIM = 18      # 18:00
 FUSO_BRASILIA = datetime.timezone(datetime.timedelta(hours=-3))
 
-# Faixas de SLA em horas comerciais
-SLA_NORMAL    = 2   # até 2h
-SLA_PERIGOSO  = 4   # 2h a 4h
-SLA_URGENTE   = 7   # 4h a 7h
-# mais de 7h = sla_estourado
+# Faixas de SLA em horas úteis (08h-18h = 10h úteis/dia)
+SLA_NORMAL   = 24   # até 24h úteis (2,4 dias)
+SLA_URGENTE  = 30   # até 30h úteis (3 dias)
+# mais de 70h úteis (7 dias) = sla_estourado
 
 
 def calcular_horas_comerciais(criado_em_utc, agora_utc):
@@ -69,13 +68,11 @@ def calcular_horas_comerciais(criado_em_utc, agora_utc):
     return total_minutos / 60
 
 
-def calcular_sla(horas_comerciais):
-    """Retorna o valor da propriedade sla_atendimento com base nas horas comerciais."""
-    if horas_comerciais <= SLA_NORMAL:
+def calcular_sla(horas_uteis):
+    """Retorna o valor da propriedade sla_atendimento com base nas horas úteis."""
+    if horas_uteis <= SLA_NORMAL:
         return "sla_normal"
-    elif horas_comerciais <= SLA_PERIGOSO:
-        return "sla_perigoso"
-    elif horas_comerciais <= SLA_URGENTE:
+    elif horas_uteis <= SLA_URGENTE:
         return "sla_urgente"
     else:
         return "sla_estourado"
@@ -173,12 +170,12 @@ def rodar_analise_sla():
         novo_sla = calcular_sla(horas)
 
         if novo_sla == sla_atual:
-            print(f"[sla] Ticket {ticket_id} — {horas:.1f}h comerciais — SLA já atualizado: {novo_sla}")
+            print(f"[sla] Ticket {ticket_id} — {horas:.1f}h úteis — SLA já atualizado: {novo_sla}")
             continue
 
         sucesso = atualizar_sla_ticket(ticket_id, novo_sla)
         if sucesso:
-            print(f"[sla] ✅ Ticket {ticket_id} '{subject[:40]}' — {horas:.1f}h comerciais → {novo_sla}")
+            print(f"[sla] ✅ Ticket {ticket_id} '{subject[:40]}' — {horas:.1f}h úteis → {novo_sla}")
             atualizados += 1
         
     print(f"[sla] ✅ Análise concluída — {atualizados}/{total} tickets atualizados.")
