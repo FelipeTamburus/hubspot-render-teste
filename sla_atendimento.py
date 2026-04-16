@@ -130,6 +130,107 @@ def buscar_tickets_em_atendimento():
     return todos
 
 
+DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1493299930566230077/5_TWodg7wdyxl_4TuWacCqxpSFsagBNcDUuI29VMhzYF8DTRvxUqlCj2lEZlmJLpP1nb"
+DISCORD_MENTIONS = "<@867436462319599627> <@1352245725995728906> <@1328680380748009513>"
+HUBSPOT_PORTAL_ID = "44225969"
+
+
+def buscar_nome_analista(ticket_id):
+    """Busca o nome do analista responsável pelo ticket."""
+    url = f"https://api.hubapi.com/crm/v3/objects/tickets/{ticket_id}?properties=hubspot_owner_id"
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=10)
+        response.raise_for_status()
+        owner_id = response.json().get("properties", {}).get("hubspot_owner_id", "")
+        if not owner_id:
+            return "Não atribuído"
+
+        owner_url = f"https://api.hubapi.com/crm/v3/owners/{owner_id}"
+        owner_resp = requests.get(owner_url, headers=HEADERS, timeout=10)
+        owner_resp.raise_for_status()
+        dados = owner_resp.json()
+        nome = f"{dados.get('firstName', '')} {dados.get('lastName', '')}".strip()
+        return nome or "Não atribuído"
+    except Exception:
+        return "Não atribuído"
+
+
+def gerar_resumo_discord(subject, ticket_id):
+    """Usa o Contexto.AI para gerar um resumo fiel e curto da demanda."""
+    from contexto_ai_client import chamar_contexto_ai
+    prompt = f"""Com base no título do ticket de suporte abaixo, gere um resumo muito curto e direto da demanda do cliente em no máximo 1 frase de até 15 palavras. Foque no problema principal. Responda APENAS com o resumo, sem aspas, sem pontuação no final.
+
+Título: {subject}"""
+    try:
+        resumo = chamar_contexto_ai(prompt, task_name="resumo_discord_sla")
+        return resumo.strip().strip('"').strip("'") if resumo else subject
+    except Exception:
+        return subject
+
+
+def enviar_alerta_discord(ticket_id, subject, horas):
+    """Envia alerta no Discord quando um ticket estoura o SLA."""
+    link = f"https://app.hubspot.com/contacts/{HUBSPOT_PORTAL_ID}/ticket/{ticket_id}"
+    analista = buscar_nome_analista(ticket_id)
+    resumo = gerar_resumo_discord(subject, ticket_id)
+
+    mensagem = (
+        f"🆘 **TICKET - SLA ESTOURADO** 🆘\n"
+        f"{DISCORD_MENTIONS}\n"
+        f"_Um ticket está com SLA Estourado, precisamos de atenção especial!_\n\n"
+        f"🆔 **ID:** [#{ticket_id}]({link})\n"
+        f"🎙️ **Resumo:** {resumo}\n"
+        f"⏱️ **Tempo aberto:** {horas:.1f}h úteis\n"
+        f"🚹 **Analista:** {analista}"
+    )
+
+    try:
+        response = requests.post(
+            DISCORD_WEBHOOK,
+            json={"content": mensagem},
+            timeout=10
+        )
+        if response.status_code in [200, 204]:
+            print(f"[sla] ✅ Alerta Discord enviado para ticket {ticket_id}.")
+            return True
+        else:
+            print(f"[sla] ❌ Discord retornou {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        print(f"[sla] ❌ Erro ao enviar alerta Discord: {e}")
+        return False
+
+
+def enviar_alerta_discord_teste():
+    """Envia uma mensagem fictícia no Discord para teste do webhook."""
+    link = f"https://app.hubspot.com/contacts/{HUBSPOT_PORTAL_ID}/ticket/00000000"
+    mensagem = (
+        f"🆘 **TICKET - SLA ESTOURADO** 🆘\n"
+        f"{DISCORD_MENTIONS}\n"
+        f"_Um ticket está com SLA Estourado, precisamos de atenção especial!_\n\n"
+        f"🆔 **ID:** [#00000000]({link})\n"
+        f"🎙️ **Resumo:** Erro na emissão de nota fiscal no módulo financeiro\n"
+        f"⏱️ **Tempo aberto:** 72.5h úteis\n"
+        f"🚹 **Analista:** Agente do Suporte\n\n"
+        f"⚠️ _Esta é uma mensagem de teste — nenhuma ação necessária._"
+    )
+    try:
+        response = requests.post(
+            DISCORD_WEBHOOK,
+            json={"content": mensagem},
+            timeout=10
+        )
+        if response.status_code in [200, 204]:
+            print(f"[sla] ✅ Mensagem de teste enviada no Discord.")
+            return True
+        else:
+            print(f"[sla] ❌ Discord retornou {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        print(f"[sla] ❌ Erro ao enviar teste Discord: {e}")
+        return False
+
+
 def atualizar_sla_ticket(ticket_id, sla_valor):
     """Atualiza a propriedade sla_atendimento do ticket."""
     url = f"https://api.hubapi.com/crm/v3/objects/tickets/{ticket_id}"
@@ -149,8 +250,8 @@ def atualizar_sla_ticket(ticket_id, sla_valor):
 
 def rodar_analise_sla():
     """
-    Busca todos os tickets em atendimento e atualiza o SLA de cada um
-    com base nas horas comerciais desde a criação.
+    Busca todos os tickets em atendimento e atualiza o SLA de cada um.
+    Envia alerta no Discord quando um ticket muda para sla_estourado.
     """
     agora = datetime.datetime.now(datetime.timezone.utc)
     print(f"[sla] Iniciando análise de SLA — {agora.astimezone(FUSO_BRASILIA).strftime('%d/%m/%Y %H:%M')} (Brasília)")
@@ -191,7 +292,12 @@ def rodar_analise_sla():
         if sucesso:
             print(f"[sla] ✅ Ticket {ticket_id} '{subject[:40]}' — {horas:.1f}h úteis → {novo_sla}")
             atualizados += 1
-        
+
+            # Dispara alerta no Discord apenas quando muda PARA sla_estourado
+            if novo_sla == "sla_estourado" and sla_atual != "sla_estourado":
+                print(f"[sla] 🆘 Ticket {ticket_id} estourou o SLA! Enviando alerta no Discord...")
+                enviar_alerta_discord(ticket_id, subject, horas)
+
     print(f"[sla] ✅ Análise concluída — {atualizados}/{total} tickets atualizados.")
 
 
