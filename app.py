@@ -11,7 +11,7 @@ from obs2_dor_ticket import processar_obs2
 from obs3_similares import processar_obs3
 from categorizacao import processar_categorizacao
 from tickets_antigos import categorizar_antigos, buscar_tickets_antigos, worker_tickets_antigos, sinalizar_chat_ao_vivo
-from sla_atendimento import rodar_analise_sla, worker_sla
+from sla_atendimento import rodar_analise_sla, worker_sla, enviar_alerta_discord_teste
 
 PIPELINE_SUPORTE_ID = "0"
 STAGE_NOVO = "1"
@@ -548,6 +548,13 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(resposta)
+        elif self.path == "/teste-discord":
+            threading.Thread(target=enviar_alerta_discord_teste, daemon=True).start()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status": "mensagem de teste enviada no Discord"}')
+            print("[admin] Teste de alerta Discord iniciado.")
         elif self.path == "/atualizar-sla":
             threading.Thread(target=rodar_analise_sla, daemon=True).start()
             self.send_response(200)
